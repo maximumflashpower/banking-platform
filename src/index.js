@@ -3,6 +3,8 @@
 const http = require("http");
 const crypto = require("crypto");
 
+const { handleChat } = require("../services/social/src/chat-core/http/chatRoutes");
+
 const PORT = Number(process.env.PORT || 3000);
 const SERVICE = process.env.SERVICE_NAME || "gateway-api";
 const STARTED_AT = new Date();
@@ -42,7 +44,7 @@ function getVersion() {
   };
 }
 
-function route(req, res, requestId) {
+async function route(req, res, requestId) {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
   const path = url.pathname;
 
@@ -64,6 +66,12 @@ function route(req, res, requestId) {
 
   if (req.method === "GET" && path === "/") {
     return json(res, 200, { ok: true, service: SERVICE, endpoints: ["/health", "/ready", "/version"] });
+  }
+
+    // Chat Core routes
+  if (path.startsWith("/chat")) {
+    const handled = await handleChat(req, res, url);
+    if (handled !== null) return handled;
   }
 
   return json(res, 404, { ok: false, error: "not_found", path, requestId });
@@ -89,7 +97,7 @@ const server = http.createServer((req, res) => {
   });
 
   try {
-    route(req, res, requestId);
+    await route(req, res, requestId);
   } catch (err) {
     console.error(JSON.stringify({ time: nowIso(), requestId, error: String(err?.stack || err) }));
     json(res, 500, { ok: false, error: "internal_error", requestId });
