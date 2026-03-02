@@ -54,12 +54,17 @@ async function handleChat(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/chat/conversations") {
-    return json(res, 200, { ok: true, conversations: await listConversations() });
+    const limit = url.searchParams.get("limit");
+    const cursor = url.searchParams.get("cursor");
+    const page = await listConversations({ limit, cursor });
+    return json(res, 200, { ok: true, ...page });
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/chat/conversations/")) {
     const id = url.pathname.split("/").pop();
-    const conv = await getConversation(id);
+    const limit = url.searchParams.get("limit");
+    const before = url.searchParams.get("before");
+    const conv = await getConversation(id, { limit, before });
     if (!conv) return notFound(res);
     return json(res, 200, { ok: true, conversation: conv });
   }
