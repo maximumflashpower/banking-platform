@@ -5,7 +5,7 @@ const {
   getConversation,
   listConversations,
   addMessage,
-} = require("../store/memoryStore");
+} = require("../repository/chatRepoPg");
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -49,17 +49,17 @@ async function handleChat(req, res, url) {
       return badRequest(res, "Invalid JSON");
     }
     const members = Array.isArray(body.members) ? body.members.map(String) : [];
-    const conv = createConversation({ members });
+    const conv = await createConversation({ members });
     return json(res, 201, { ok: true, conversation: conv });
   }
 
   if (req.method === "GET" && url.pathname === "/chat/conversations") {
-    return json(res, 200, { ok: true, conversations: listConversations() });
+    return json(res, 200, { ok: true, conversations: await listConversations() });
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/chat/conversations/")) {
     const id = url.pathname.split("/").pop();
-    const conv = getConversation(id);
+    const conv = await getConversation(id);
     if (!conv) return notFound(res);
     return json(res, 200, { ok: true, conversation: conv });
   }
@@ -79,10 +79,11 @@ async function handleChat(req, res, url) {
     if (!conversationId) return badRequest(res, "conversationId is required");
     if (!text.trim()) return badRequest(res, "text is required");
 
-    const msg = addMessage(conversationId, { senderId, text });
+    const msg = await addMessage({ conversationId, senderId, text });
     if (!msg) return notFound(res);
 
-    return json(res, 201, { ok: true, message: msg });
+    const conv2 = await getConversation(conversationId);
+    return json(res, 200, { ok: true, conversation: conv2 });
   }
 
   return null;
