@@ -7,8 +7,24 @@ services:
     environment:
       NODE_ENV: development
       SERVICE_NAME: gateway-api
-      # Opcional: setear commit en runtime (si quieres)
-      # GIT_SHA: "local"
+      DATABASE_URL: postgres://app:app@db:5432/social
     volumes:
       - .:/app
       - /app/node_modules
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16-alpine
+    container_name: banking_postgres
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: social
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
