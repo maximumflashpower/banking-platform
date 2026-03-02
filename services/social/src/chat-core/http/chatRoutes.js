@@ -40,7 +40,31 @@ function badRequest(res, message) {
   return json(res, 400, { ok: false, error: "bad_request", message });
 }
 
+function unauthorized(res) {
+  return json(res, 401, { ok: false, error: "unauthorized", message: "x-user-id header required" });
+}
+
+function forbidden(res) {
+  return json(res, 403, { ok: false, error: "forbidden" });
+}
+
+function clampInt(n, { min, max, def }) {
+  const x = Number.isFinite(n) ? n : parseInt(String(n || ""), 10);
+  if (!Number.isFinite(x)) return def;
+  return Math.max(min, Math.min(max, x));
+}
+
+function getQueryParam(url, key) {
+  const v = url.searchParams.get(key);
+  return v === null ? null : String(v);
+}
+
 async function handleChat(req, res, url) {
+  const userId = (req.headers["x-user-id"] || "").toString().trim();
+  if (!userId) return unauthorized(res);
+
+  // POST /chat/conversations  { members: ["u1","u2"] }
+  // Nota: fuerza que el creator quede como miembro.
   if (req.method === "POST" && url.pathname === "/chat/conversations") {
     let body;
     try {
@@ -48,27 +72,41 @@ async function handleChat(req, res, url) {
     } catch {
       return badRequest(res, "Invalid JSON");
     }
-    const members = Array.isArray(body.members) ? body.members.map(String) : [];
+
+    const raw = Array.isArray(body.members) ? body.members.map(String) : [];
+    const membersSet = new Set([userId, ...raw.filter(Boolean)]);
+    const members = Array.from(membersSet);
+
     const conv = await createConversation({ members });
     return json(res, 201, { ok: true, conversation: conv });
   }
 
+  // GET /chat/conversations?limit=50&cursor=<ISO>
   if (req.method === "GET" && url.pathname === "/chat/conversations") {
-    const limit = url.searchParams.get("limit");
-    const cursor = url.searchParams.get("cursor");
-    const page = await listConversations({ limit, cursor });
-    return json(res, 200, { ok: true, ...page });
+    const limit = clampInt(getQueryParam(url, "limit"), { min: 1, max: 200, def: 50 });
+    const cursor = getQueryParam(url, "cursor");
+
+    const { conversations, nextCursor } = await listConversations({ userId, limit, cursor });
+    return json(res, 200, { ok: true, conversations, nextCursor });
   }
 
+  // GET /chat/conversations/:id?limit=50&before=<ISO|ISO|msg_id>
   if (req.method === "GET" && url.pathname.startsWith("/chat/conversations/")) {
     const id = url.pathname.split("/").pop();
-    const limit = url.searchParams.get("limit");
-    const before = url.searchParams.get("before");
-    const conv = await getConversation(id, { limit, before });
-    if (!conv) return notFound(res);
-    return json(res, 200, { ok: true, conversation: conv });
+    const limit = clampInt(getQueryParam(url, "limit"), { min: 1, max: 200, def: 50 });
+    const before = getQueryParam(url, "before");
+
+    try {
+      const conv = await getConversation(id, { userId, limit, before });
+      if (!conv) return notFound(res);
+      return json(res, 200, { ok: true, conversation: conv });
+    } catch (e) {
+      if (String(e && e.code) === "FORBIDDEN") return forbidden(res);
+      throw e;
+    }
   }
 
+  // POST /chat/send  { conversationId, senderId?, text }
   if (req.method === "POST" && url.pathname === "/chat/send") {
     let body;
     try {
@@ -79,16 +117,22 @@ async function handleChat(req, res, url) {
 
     const conversationId = body.conversationId ? String(body.conversationId) : "";
     const text = body.text ? String(body.text) : "";
-    const senderId = body.senderId ? String(body.senderId) : "anonymous";
-
+    const senderId = String(req.headers["x-user-id"] || "");
+	
+	if (!senderId) return json(res, 401, { ok: false, error: "unauthorized", message: "x-user-id header required" });
     if (!conversationId) return badRequest(res, "conversationId is required");
     if (!text.trim()) return badRequest(res, "text is required");
 
-    const msg = await addMessage({ conversationId, senderId, text });
-    if (!msg) return notFound(res);
+    try {
+      const msg = await addMessage({ conversationId, userId, senderId, text });
+      if (!msg) return notFound(res);
 
-    const conv2 = await getConversation(conversationId);
-    return json(res, 200, { ok: true, conversation: conv2 });
+      const conv2 = await getConversation(conversationId, { userId, limit: 50, before: null });
+      return json(res, 200, { ok: true, conversation: conv2 });
+    } catch (e) {
+      if (String(e && e.code) === "FORBIDDEN") return forbidden(res);
+      throw e;
+    }
   }
 
   return null;
