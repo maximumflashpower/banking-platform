@@ -1,15 +1,13 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const { query } = require("./db");
+const { migrate } = require("./migrate");
 
 async function initDb() {
-  if (!process.env.DATABASE_URL) return;
-
-  const schemaPath = path.join(__dirname, "schema.sql");
-  const sql = fs.readFileSync(schemaPath, "utf8");
-  await query(sql);
+  const res = await migrate();
+  if (res.applied && res.applied.length) {
+    console.log(JSON.stringify({ msg: "db_migrated", applied: res.applied }));
+  }
+  return res;
 }
 
 module.exports = { initDb };
