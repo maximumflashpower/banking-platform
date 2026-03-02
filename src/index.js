@@ -4,6 +4,7 @@ const http = require("http");
 const crypto = require("crypto");
 
 const { handleChat } = require("../services/social/src/chat-core/http/chatRoutes");
+const { initDb } = require("../services/social/src/chat-core/infrastructure/postgres/initDb");
 
 const PORT = Number(process.env.PORT || 3000);
 const SERVICE = process.env.SERVICE_NAME || "gateway-api";

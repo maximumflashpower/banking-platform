@@ -5,7 +5,7 @@ const {
   getConversation,
   listConversations,
   addMessage,
-} = require("../store/memoryStore");
+} = require("../repository/chatRepoPg");
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
