@@ -20,13 +20,14 @@ function parseIso(s) {
   return d;
 }
 
-function rowToConversation(row, messages) {
-  return {
+function rowToConversation(row, messagesOrNull) {
+  const base = {
     id: row.id,
     createdAt: row.created_at.toISOString(),
     members: row.members || [],
-    ...(messages === null ? {} : { messages }),
   };
+  if (messagesOrNull === null) return base;
+  return { ...base, messages: messagesOrNull };
 }
 
 function rowToMessage(row) {
@@ -47,8 +48,6 @@ async function createConversation({ members = [] } = {}) {
   return rowToConversation(r.rows[0], []);
 }
 
-// Cursor-based pagination (created_at, id) for stability.
-// cursor = ISO timestamp. Returns newest first.
 async function listConversations({ limit = 20, cursor = null } = {}) {
   const lim = clampInt(limit, { min: 1, max: 100, def: 20 });
   const cur = parseIso(cursor);
@@ -80,8 +79,8 @@ async function listConversations({ limit = 20, cursor = null } = {}) {
   return { conversations, nextCursor };
 }
 
-// Messages pagination: before=<ISO> returns messages strictly older than before.
-// We fetch newest-first, then reverse to oldest->newest for UI.
+// Messages pagination stable cursor:
+// before can be ISO (back-compat) OR "ISO|msg_id"
 async function getConversation(conversationId, { limit = 50, before = null } = {}) {
   const c = await query(
     "select id, created_at, members from conversations where id=$1",
@@ -90,15 +89,35 @@ async function getConversation(conversationId, { limit = 50, before = null } = {
   if (c.rowCount === 0) return null;
 
   const lim = clampInt(limit, { min: 1, max: 200, def: 50 });
-  const b = parseIso(before);
+
+  let beforeIso = null;
+  let beforeId = null;
+  if (before) {
+    const raw = String(before);
+    const parts = raw.split("|");
+    beforeIso = parts[0] || null;
+    beforeId = parts[1] || null;
+  }
+  const b = parseIso(beforeIso);
 
   let m;
-  if (b) {
+  if (b && beforeId) {
+    m = await query(
+      `select id, sender_id, text, created_at
+       from messages
+       where conversation_id=$1
+         and (created_at, id) < ($2::timestamptz, $3::text)
+       order by created_at desc, id desc
+       limit $4`,
+      [conversationId, b.toISOString(), beforeId, lim]
+    );
+  } else if (b) {
+    // Back-compat: timestamp only (may repeat if many rows share same created_at)
     m = await query(
       `select id, sender_id, text, created_at
        from messages
        where conversation_id=$1 and created_at < $2
-       order by created_at desc
+       order by created_at desc, id desc
        limit $3`,
       [conversationId, b.toISOString(), lim]
     );
@@ -107,17 +126,17 @@ async function getConversation(conversationId, { limit = 50, before = null } = {
       `select id, sender_id, text, created_at
        from messages
        where conversation_id=$1
-       order by created_at desc
+       order by created_at desc, id desc
        limit $2`,
       [conversationId, lim]
     );
   }
 
   const newestFirst = m.rows.map(rowToMessage);
-  const messages = newestFirst.reverse();
+  const messages = newestFirst.reverse(); // UI: oldest->newest within page
 
   const nextBefore =
-    messages.length > 0 ? messages[0].createdAt : null;
+    messages.length > 0 ? `${messages[0].createdAt}|${messages[0].id}` : null;
 
   return {
     ...rowToConversation(c.rows[0], messages),
