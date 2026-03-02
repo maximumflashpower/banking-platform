@@ -1,0 +1,431 @@
+.
+├── .dockerignore
+├── .env.example
+├── .gitignore
+├── Dockerfile
+├── LICENSE
+├── MVP_SAFETY_CHECKLIST.md
+├── README.md
+├── TREE_FULL.txt
+├── apis
+│   ├── internal
+│   │   └── v1
+│   │       ├── cards
+│   │       │   ├── POST_auth_decision.md
+│   │       │   ├── POST_settlement_post.md
+│   │       │   └── POST_webhooks_cards_ingest.md
+│   │       ├── case-management
+│   │       │   ├── POST_cases.md
+│   │       │   ├── POST_cases_{id}_assign.md
+│   │       │   ├── POST_cases_{id}_evidence.md
+│   │       │   └── POST_cases_{id}_state.md
+│   │       ├── ledger
+│   │       │   ├── GET_accounts_{id}_balance.md
+│   │       │   ├── POST_holds_create.md
+│   │       │   ├── POST_holds_release.md
+│   │       │   ├── POST_postings_commit.md
+│   │       │   └── POST_postings_prepare.md
+│   │       ├── notifications
+│   │       │   ├── POST_email_send.md
+│   │       │   ├── POST_financial-inbox_send.md
+│   │       │   └── POST_push_send.md
+│   │       ├── payments
+│   │       │   ├── POST_intents_state.md
+│   │       │   ├── POST_rails_ach_submit.md
+│   │       │   └── POST_webhooks_ach_ingest.md
+│   │       └── risk
+│   │           ├── POST_actions_apply.md
+│   │           ├── POST_decision_evaluate.md
+│   │           └── POST_signals_ingest.md
+│   └── public
+│       └── v1
+│           ├── auth
+│           │   ├── POST_login.md
+│           │   ├── POST_logout.md
+│           │   ├── POST_step-up_verify.md
+│           │   └── POST_web-companion_qr-session.md
+│           ├── cards
+│           │   ├── GET_cards_space_id.md
+│           │   ├── GET_cards_transactions_space_id.md
+│           │   ├── POST_cards_disputes.md
+│           │   ├── POST_cards_freeze.md
+│           │   └── POST_cards_unfreeze.md
+│           ├── finance
+│           │   ├── GET_balances_space_id.md
+│           │   ├── GET_payment-intents_space_id.md
+│           │   ├── GET_transactions_space_id.md
+│           │   ├── POST_approvals_{intent_id}_vote.md
+│           │   ├── POST_payment-intents.md
+│           │   └── POST_payment-intents_{id}_cancel.md
+│           ├── financial-inbox
+│           │   ├── GET_inbox_space_id.md
+│           │   ├── GET_inbox_{message_id}.md
+│           │   └── POST_inbox_{message_id}_ack.md
+│           ├── identity
+│           │   ├── GET_me.md
+│           │   ├── GET_spaces.md
+│           │   ├── POST_kyb_start.md
+│           │   ├── POST_kyb_submit.md
+│           │   ├── POST_kyc_start.md
+│           │   ├── POST_kyc_submit.md
+│           │   └── POST_spaces_switch.md
+│           └── social
+│               ├── GET_conversations_space_id.md
+│               ├── GET_conversations_{id}_messages.md
+│               ├── POST_conversations.md
+│               ├── POST_conversations_{id}_messages.md
+│               └── POST_reports.md
+├── apps
+│   ├── admin-portal
+│   │   ├── src
+│   │   │   ├── aml-dashboard
+│   │   │   │   └── .gitkeep
+│   │   │   ├── audit-viewer
+│   │   │   │   └── .gitkeep
+│   │   │   ├── case-management
+│   │   │   │   └── .gitkeep
+│   │   │   ├── reconciliation
+│   │   │   │   └── .gitkeep
+│   │   │   └── user-admin
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── mobile
+│   │   ├── src
+│   │   │   ├── auth-stepup
+│   │   │   │   └── .gitkeep
+│   │   │   ├── business
+│   │   │   │   └── .gitkeep
+│   │   │   ├── global-inbox
+│   │   │   │   └── .gitkeep
+│   │   │   ├── personal
+│   │   │   │   └── .gitkeep
+│   │   │   └── shared
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   └── web-companion
+│       ├── src
+│       │   ├── approvals
+│       │   │   └── .gitkeep
+│       │   ├── chat
+│       │   │   └── .gitkeep
+│       │   ├── financial-inbox
+│       │   │   └── .gitkeep
+│       │   ├── login-qr
+│       │   │   └── .gitkeep
+│       │   └── space-switch
+│       │       └── .gitkeep
+│       └── tests
+│           └── .gitkeep
+├── contracts
+│   ├── api
+│   │   ├── internal
+│   │   │   └── .gitkeep
+│   │   └── public
+│   │       └── .gitkeep
+│   ├── events
+│   │   ├── schemas
+│   │   │   └── .gitkeep
+│   │   └── v1
+│   │       └── .gitkeep
+│   └── idempotency
+│       └── .gitkeep
+├── datastores
+│   ├── audit-db
+│   │   ├── admin_actions.sql
+│   │   ├── audit_log_immutable.sql
+│   │   ├── exports_log.sql
+│   │   ├── retention_policies.sql
+│   │   └── security_events.sql
+│   ├── cards-db
+│   │   ├── audit_cards_events.sql
+│   │   ├── card_authorizations.sql
+│   │   ├── card_captures.sql
+│   │   ├── card_controls_limits.sql
+│   │   ├── card_disputes.sql
+│   │   ├── card_reversals.sql
+│   │   ├── card_settlements.sql
+│   │   ├── cardholders.sql
+│   │   ├── cards.sql
+│   │   ├── cards_outbox.sql
+│   │   └── cards_webhook_events.sql
+│   ├── case-db
+│   │   ├── case_assignments.sql
+│   │   ├── case_bank_escalations.sql
+│   │   ├── case_evidence.sql
+│   │   ├── case_sla_tracking.sql
+│   │   ├── case_timeline.sql
+│   │   ├── case_user_requests.sql
+│   │   └── cases.sql
+│   ├── financial-db
+│   │   ├── audit_financial_events.sql
+│   │   ├── budgets_soft.sql
+│   │   ├── financial_outbox.sql
+│   │   ├── ledger_accounts.sql
+│   │   ├── ledger_holds.sql
+│   │   ├── ledger_journal_entries.sql
+│   │   ├── ledger_postings.sql
+│   │   ├── payment_approvals.sql
+│   │   ├── payment_intent_states.sql
+│   │   ├── payment_intents.sql
+│   │   ├── rails_transfers_ach.sql
+│   │   ├── rails_webhook_events.sql
+│   │   ├── reconciliation_items.sql
+│   │   └── reconciliation_runs.sql
+│   ├── identity-db
+│   │   ├── audit_identity_events.sql
+│   │   ├── business_members.sql
+│   │   ├── business_roles.sql
+│   │   ├── entitlements.sql
+│   │   ├── erc_links.sql
+│   │   ├── kyb_businesses.sql
+│   │   ├── kyc_profiles.sql
+│   │   ├── sessions.sql
+│   │   ├── user_devices.sql
+│   │   └── users.sql
+│   ├── risk-db
+│   │   ├── risk_cases_links.sql
+│   │   ├── risk_decisions.sql
+│   │   ├── risk_profiles.sql
+│   │   ├── risk_rules_registry.sql
+│   │   ├── risk_signals_device.sql
+│   │   ├── risk_signals_financial.sql
+│   │   └── risk_signals_social.sql
+│   └── social-db
+│       ├── attachments_metadata.sql
+│       ├── conversation_members.sql
+│       ├── conversation_policies.sql
+│       ├── conversations.sql
+│       ├── message_receipts.sql
+│       ├── messages.sql
+│       ├── moderation_flags.sql
+│       ├── reports_abuse.sql
+│       └── social_events_outbox.sql
+├── docker-compose.yml
+├── docs
+│   ├── _inputs
+│   │   └── ARBOL_DE_CARPETAS_ORIGINAL.txt
+│   ├── architecture
+│   │   ├── case-management.md
+│   │   ├── domain-separation.md
+│   │   ├── financial-inbox.md
+│   │   ├── ledger-dual-recon.md
+│   │   ├── payment-intents.md
+│   │   ├── risk-core-modules.md
+│   │   └── web-companion.md
+│   ├── compliance
+│   │   ├── aml-program.md
+│   │   ├── freeze-policy.md
+│   │   ├── incident-response.md
+│   │   ├── kyc-kyb.md
+│   │   ├── ofac-screening.md
+│   │   └── sar-handling.md
+│   └── constitution
+│       ├── document_a.md
+│       ├── executive_snapshot.md
+│       └── sponsor_bank_outline.md
+├── event-buses
+│   ├── cards-bus
+│   │   ├── card.auth.approved.v1.topic
+│   │   ├── card.auth.declined.v1.topic
+│   │   ├── card.auth.received.v1.topic
+│   │   ├── card.capture.received.v1.topic
+│   │   ├── card.dispute.opened.v1.topic
+│   │   ├── card.dispute.resolved.v1.topic
+│   │   ├── card.reversal.received.v1.topic
+│   │   └── card.settlement.posted.v1.topic
+│   ├── financial-bus
+│   │   ├── fin.freeze.space_frozen.v1.topic
+│   │   ├── fin.ledger.hold_created.v1.topic
+│   │   ├── fin.ledger.journal_posted.v1.topic
+│   │   ├── fin.payment.approval_requested.v1.topic
+│   │   ├── fin.payment.approved.v1.topic
+│   │   ├── fin.payment.rejected.v1.topic
+│   │   ├── fin.payment_intent.created.v1.topic
+│   │   ├── fin.payment_intent.state_changed.v1.topic
+│   │   ├── fin.rail.ach.returned.v1.topic
+│   │   ├── fin.rail.ach.submitted.v1.topic
+│   │   └── fin.recon.run_completed.v1.topic
+│   ├── ops-bus
+│   │   ├── ops.case.created.v1.topic
+│   │   ├── ops.case.state_changed.v1.topic
+│   │   ├── ops.fin_inbox.ack_required.v1.topic
+│   │   ├── ops.fin_inbox.message_created.v1.topic
+│   │   ├── ops.notification.email_requested.v1.topic
+│   │   ├── ops.notification.push_requested.v1.topic
+│   │   └── ops.web_companion.session_changed.v1.topic
+│   ├── risk-bus
+│   │   ├── risk.action.block_tx.v1.topic
+│   │   ├── risk.action.freeze_space.v1.topic
+│   │   ├── risk.action.manual_review.v1.topic
+│   │   ├── risk.bank_escalation.required.v1.topic
+│   │   ├── risk.decision.made.v1.topic
+│   │   └── risk.signal.ingested.v1.topic
+│   └── social-bus
+│       ├── social.chat.message_created.v1.topic
+│       ├── social.chat.message_delivered.v1.topic
+│       ├── social.chat.thread_created.v1.topic
+│       ├── social.identity.space_context_used.v1.topic
+│       └── social.moderation.flag_created.v1.topic
+├── infra
+│   ├── ci-cd
+│   │   └── .gitkeep
+│   ├── db-migrations
+│   │   └── .gitkeep
+│   ├── docker
+│   │   └── .gitkeep
+│   ├── k8s
+│   │   └── .gitkeep
+│   ├── logging
+│   │   └── .gitkeep
+│   ├── message-broker
+│   │   └── .gitkeep
+│   ├── monitoring
+│   │   └── .gitkeep
+│   └── terraform
+│       └── .gitkeep
+├── package-lock.json
+├── package.json
+├── security
+│   ├── audit
+│   │   └── .gitkeep
+│   ├── device-binding
+│   │   └── .gitkeep
+│   ├── encryption
+│   │   └── .gitkeep
+│   ├── session-management
+│   │   └── .gitkeep
+│   └── step-up
+│       └── .gitkeep
+├── services
+│   ├── cards
+│   │   ├── src
+│   │   │   ├── authorizations
+│   │   │   │   └── .gitkeep
+│   │   │   ├── disputes
+│   │   │   │   └── .gitkeep
+│   │   │   ├── issuing
+│   │   │   │   └── .gitkeep
+│   │   │   ├── outbox
+│   │   │   │   └── .gitkeep
+│   │   │   └── settlements
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── case-management
+│   │   ├── src
+│   │   │   ├── aml-risk
+│   │   │   │   └── .gitkeep
+│   │   │   ├── disputes
+│   │   │   │   └── .gitkeep
+│   │   │   ├── legal-hold
+│   │   │   │   └── .gitkeep
+│   │   │   ├── recovery
+│   │   │   │   └── .gitkeep
+│   │   │   └── support
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── gateway-api
+│   │   ├── src
+│   │   │   └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── identity
+│   │   ├── src
+│   │   │   ├── erc
+│   │   │   │   └── .gitkeep
+│   │   │   ├── kyb
+│   │   │   │   └── .gitkeep
+│   │   │   ├── kyc
+│   │   │   │   └── .gitkeep
+│   │   │   ├── roles
+│   │   │   │   └── .gitkeep
+│   │   │   └── users
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── ledger
+│   │   ├── src
+│   │   │   ├── accounts
+│   │   │   │   └── .gitkeep
+│   │   │   ├── holds
+│   │   │   │   └── .gitkeep
+│   │   │   ├── journal
+│   │   │   │   └── .gitkeep
+│   │   │   ├── outbox
+│   │   │   │   └── .gitkeep
+│   │   │   ├── postings
+│   │   │   │   └── .gitkeep
+│   │   │   └── reconciliation
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── notifications
+│   │   ├── src
+│   │   │   ├── email
+│   │   │   │   └── .gitkeep
+│   │   │   ├── financial-inbox
+│   │   │   │   └── .gitkeep
+│   │   │   └── push
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── payments
+│   │   ├── src
+│   │   │   ├── intents
+│   │   │   │   └── .gitkeep
+│   │   │   ├── orchestrator
+│   │   │   │   └── .gitkeep
+│   │   │   ├── outbox
+│   │   │   │   └── .gitkeep
+│   │   │   ├── rails
+│   │   │   │   └── ach
+│   │   │   │       └── .gitkeep
+│   │   │   └── webhooks
+│   │   │       └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   ├── risk
+│   │   ├── src
+│   │   │   ├── core
+│   │   │   │   └── .gitkeep
+│   │   │   ├── escalation
+│   │   │   │   └── .gitkeep
+│   │   │   └── modules
+│   │   │       ├── aml
+│   │   │       │   └── .gitkeep
+│   │   │       ├── device
+│   │   │       │   └── .gitkeep
+│   │   │       ├── financial
+│   │   │       │   └── .gitkeep
+│   │   │       └── social
+│   │   │           └── .gitkeep
+│   │   └── tests
+│   │       └── .gitkeep
+│   └── social
+│       ├── src
+│       │   ├── chat
+│       │   │   └── .gitkeep
+│       │   ├── media
+│       │   │   └── .gitkeep
+│       │   ├── moderation-signals
+│       │   │   └── .gitkeep
+│       │   └── threads
+│       │       └── .gitkeep
+│       └── tests
+│           └── .gitkeep
+├── src
+│   └── index.js
+└── tests
+    ├── aml-scenarios
+    │   └── .gitkeep
+    ├── e2e
+    │   └── .gitkeep
+    ├── integration
+    │   └── .gitkeep
+    └── reconciliation
+        └── .gitkeep
+
+159 directories, 269 files

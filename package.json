@@ -1,0 +1,10 @@
+{
+  "name": "banking-platform",
+  "private": true,
+  "engines": {
+    "node": "20.11.1"
+  },
+  "scripts": {
+    "dev": "node src/index.js"
+  }
+}
