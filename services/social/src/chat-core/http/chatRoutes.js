@@ -15,7 +15,7 @@ function readJson(req) {
       if (!data) return resolve({});
       try {
         resolve(JSON.parse(data));
-      } catch (e) {
+      } catch {
         reject(new Error("invalid_json"));
       }
     });
@@ -41,7 +41,6 @@ function badRequest(res, message) {
 }
 
 async function handleChat(req, res, url) {
-  // POST /chat/conversations
   if (req.method === "POST" && url.pathname === "/chat/conversations") {
     let body;
     try {
@@ -54,12 +53,10 @@ async function handleChat(req, res, url) {
     return json(res, 201, { ok: true, conversation: conv });
   }
 
-  // GET /chat/conversations
   if (req.method === "GET" && url.pathname === "/chat/conversations") {
     return json(res, 200, { ok: true, conversations: listConversations() });
   }
 
-  // GET /chat/conversations/:id
   if (req.method === "GET" && url.pathname.startsWith("/chat/conversations/")) {
     const id = url.pathname.split("/").pop();
     const conv = getConversation(id);
@@ -67,7 +64,6 @@ async function handleChat(req, res, url) {
     return json(res, 200, { ok: true, conversation: conv });
   }
 
-  // POST /chat/send
   if (req.method === "POST" && url.pathname === "/chat/send") {
     let body;
     try {
@@ -89,7 +85,7 @@ async function handleChat(req, res, url) {
     return json(res, 201, { ok: true, message: msg });
   }
 
-  return null; // no match
+  return null;
 }
 
 module.exports = { handleChat };

@@ -77,7 +77,7 @@ async function route(req, res, requestId) {
   return json(res, 404, { ok: false, error: "not_found", path, requestId });
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const requestId = req.headers["x-request-id"]?.toString() || crypto.randomUUID();
   const t0 = Date.now();
 

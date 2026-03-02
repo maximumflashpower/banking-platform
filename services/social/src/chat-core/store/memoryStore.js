@@ -10,18 +10,11 @@ function makeId(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
-// Estructura:
-// conversations: Map<conversationId, { id, createdAt, members: string[], messages: Message[] }>
 const conversations = new Map();
 
 function createConversation({ members = [] } = {}) {
   const id = makeId("conv");
-  const conv = {
-    id,
-    createdAt: nowIso(),
-    members,
-    messages: [],
-  };
+  const conv = { id, createdAt: nowIso(), members, messages: [] };
   conversations.set(id, conv);
   return conv;
 }
@@ -55,9 +48,4 @@ function addMessage(conversationId, { senderId, text }) {
   return msg;
 }
 
-module.exports = {
-  createConversation,
-  getConversation,
-  listConversations,
-  addMessage,
-};
+module.exports = { createConversation, getConversation, listConversations, addMessage };
