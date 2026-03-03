@@ -7,12 +7,22 @@ services:
     environment:
       NODE_ENV: development
       SERVICE_NAME: gateway-api
+
+      # Social DB (chat)
       DATABASE_URL: postgres://app:app@db:5432/social
+
+      # Identity DB (users/sessions)
+      IDENTITY_DATABASE_URL: postgres://app:app@db:5432/identity
+
+      # Financial DB (ledger core)
+      FINANCIAL_DATABASE_URL: postgres://app:app@db:5432/financial_db
+
     volumes:
       - .:/app
       - /app/node_modules
     depends_on:
       - db
+    command: ["sh", "-lc", "until nc -z db 5432; do echo waiting for db; sleep 1; done; node src/index.js"]
 
   db:
     image: postgres:16-alpine
@@ -25,6 +35,12 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d social"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
 volumes:
   pgdata:

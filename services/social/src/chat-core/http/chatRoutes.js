@@ -7,6 +7,19 @@ const {
   addMessage,
 } = require("../repository/chatRepoPg");
 
+/**
+ * ETAPA 1: Auth solo por sesión.
+ * El Gateway debe setear:
+ *   req.auth = { userId, spaceId, sessionId }
+ * Si falta, se responde 401.
+ */
+function getAuth(req) {
+  const userId = req?.auth?.userId ? String(req.auth.userId).trim() : "";
+  const spaceId = req?.auth?.spaceId ? String(req.auth.spaceId).trim() : "";
+  const sessionId = req?.auth?.sessionId ? String(req.auth.sessionId).trim() : "";
+  return { userId, spaceId, sessionId };
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -41,7 +54,7 @@ function badRequest(res, message) {
 }
 
 function unauthorized(res) {
-  return json(res, 401, { ok: false, error: "unauthorized", message: "x-user-id header required" });
+  return json(res, 401, { ok: false, error: "unauthorized", message: "session required" });
 }
 
 function forbidden(res) {
@@ -60,8 +73,8 @@ function getQueryParam(url, key) {
 }
 
 async function handleChat(req, res, url) {
-  const userId = (req.headers["x-user-id"] || "").toString().trim();
-  if (!userId) return unauthorized(res);
+  const { userId, spaceId } = getAuth(req);
+  if (!userId || !spaceId) return unauthorized(res);
 
   // POST /chat/conversations  { members: ["u1","u2"] }
   // Nota: fuerza que el creator quede como miembro.
@@ -77,7 +90,8 @@ async function handleChat(req, res, url) {
     const membersSet = new Set([userId, ...raw.filter(Boolean)]);
     const members = Array.from(membersSet);
 
-    const conv = await createConversation({ members });
+    // ETAPA 1: scoping por space_id
+    const conv = await createConversation({ spaceId, members, createdBy: userId });
     return json(res, 201, { ok: true, conversation: conv });
   }
 
@@ -86,18 +100,18 @@ async function handleChat(req, res, url) {
     const limit = clampInt(getQueryParam(url, "limit"), { min: 1, max: 200, def: 50 });
     const cursor = getQueryParam(url, "cursor");
 
-    const { conversations, nextCursor } = await listConversations({ userId, limit, cursor });
+    const { conversations, nextCursor } = await listConversations({ spaceId, userId, limit, cursor });
     return json(res, 200, { ok: true, conversations, nextCursor });
   }
 
-  // GET /chat/conversations/:id?limit=50&before=<ISO|ISO|msg_id>
+  // GET /chat/conversations/:id?limit=50&before=<ISO|msg_id>
   if (req.method === "GET" && url.pathname.startsWith("/chat/conversations/")) {
     const id = url.pathname.split("/").pop();
     const limit = clampInt(getQueryParam(url, "limit"), { min: 1, max: 200, def: 50 });
     const before = getQueryParam(url, "before");
 
     try {
-      const conv = await getConversation(id, { userId, limit, before });
+      const conv = await getConversation(id, { spaceId, userId, limit, before });
       if (!conv) return notFound(res);
       return json(res, 200, { ok: true, conversation: conv });
     } catch (e) {
@@ -106,7 +120,8 @@ async function handleChat(req, res, url) {
     }
   }
 
-  // POST /chat/send  { conversationId, senderId?, text }
+  // POST /chat/send  { conversationId, text }
+  // ETAPA 1: senderId viene SIEMPRE de la sesión (userId), no del cliente.
   if (req.method === "POST" && url.pathname === "/chat/send") {
     let body;
     try {
@@ -117,17 +132,15 @@ async function handleChat(req, res, url) {
 
     const conversationId = body.conversationId ? String(body.conversationId) : "";
     const text = body.text ? String(body.text) : "";
-    const senderId = String(req.headers["x-user-id"] || "");
-	
-	if (!senderId) return json(res, 401, { ok: false, error: "unauthorized", message: "x-user-id header required" });
+
     if (!conversationId) return badRequest(res, "conversationId is required");
     if (!text.trim()) return badRequest(res, "text is required");
 
     try {
-      const msg = await addMessage({ conversationId, userId, senderId, text });
+      const msg = await addMessage({ spaceId, conversationId, userId, text });
       if (!msg) return notFound(res);
 
-      const conv2 = await getConversation(conversationId, { userId, limit: 50, before: null });
+      const conv2 = await getConversation(conversationId, { spaceId, userId, limit: 50, before: null });
       return json(res, 200, { ok: true, conversation: conv2 });
     } catch (e) {
       if (String(e && e.code) === "FORBIDDEN") return forbidden(res);
