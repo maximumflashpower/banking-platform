@@ -8,3 +8,7 @@ node_modules/
 # backups
 *.tgz
 backups/
+
+# local artifacts
+cookies.txt
+cookies2.txt
