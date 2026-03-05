@@ -12,3 +12,6 @@ backups/
 # local artifacts
 cookies.txt
 cookies2.txt
+
+# Local overrides
+/docker-compose.override.yml
