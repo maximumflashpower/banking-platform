@@ -6,11 +6,9 @@ const db = require('../infrastructure/financialDb');
 
 const router = express.Router();
 
-// Este scope debe ser estable (forma parte de la UNIQUE key junto a space_id + idem_key)
+// Este scope debe ser estable (forma parte de la UNIQUE key junto a space_id + scope + idem_key)
 const IDEM_SCOPE = 'public.v1.finance.payment-intents.create';
 
-// En tu DB idempotency_keys requiere space_id.
-// Para ETAPA 2C, lo más práctico es exigirlo vía header. (Más adelante vendrá de Identity/Spaces.)
 function getSpaceId(req) {
   const spaceId = req.header('X-Space-Id');
   return typeof spaceId === 'string' && spaceId.trim() ? spaceId.trim() : null;
@@ -28,6 +26,11 @@ function isNonEmptyString(x) {
 
 function isPositiveInt(x) {
   return Number.isInteger(x) && x > 0;
+}
+
+function isUuidLike(x) {
+  return typeof x === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 }
 
 function sha256Hex(s) {
@@ -54,40 +57,38 @@ router.post('/payment-intents', async (req, res, next) => {
       });
     }
 
-    const { from_account, to_account, amount, currency } = req.body || {};
+    const { payer_user_id, payee_user_id, amount_cents, currency } = req.body || {};
 
-    if (!isNonEmptyString(from_account) || !isNonEmptyString(to_account)) {
+    if (!isUuidLike(payer_user_id) || !isUuidLike(payee_user_id)) {
       return res.status(400).json({
         error: 'invalid_request',
-        message: 'from_account and to_account are required (non-empty strings)',
+        message: 'payer_user_id and payee_user_id are required (uuid strings)',
       });
     }
 
-    if (!isPositiveInt(amount)) {
+    if (!isPositiveInt(amount_cents)) {
       return res.status(400).json({
         error: 'invalid_request',
-        message: 'amount must be a positive integer (minor units, e.g. cents)',
+        message: 'amount_cents must be a positive integer (minor units, e.g. cents)',
       });
     }
 
-    if (!isNonEmptyString(currency)) {
+    if (!isNonEmptyString(currency) || currency.trim().length !== 3) {
       return res.status(400).json({
         error: 'invalid_request',
-        message: 'currency is required',
+        message: 'currency is required (3-letter code)',
       });
     }
 
     const correlationId = getCorrelationId(req);
 
     // --- Idempotencia: request_hash ---
-    // Si reusan la misma key con un body diferente, detectamos conflicto.
     const requestHash = sha256Hex(
       JSON.stringify({
-        from_account,
-        to_account,
-        amount,
-        currency,
-        // puedes incluir más campos aquí cuando crezca el payload
+        payer_user_id,
+        payee_user_id,
+        amount_cents,
+        currency: currency.trim().toUpperCase(),
       })
     );
 
@@ -105,7 +106,6 @@ router.post('/payment-intents', async (req, res, next) => {
     if (existing.rowCount > 0) {
       const row = existing.rows[0];
 
-      // misma key pero request diferente => conflicto (esto es estándar)
       if (row.request_hash !== requestHash) {
         return res.status(409).json({
           error: 'idempotency_key_conflict',
@@ -113,29 +113,48 @@ router.post('/payment-intents', async (req, res, next) => {
         });
       }
 
-      // replay válido => devolvemos exactamente lo guardado
       return res.status(200).json(row.response_json);
     }
 
     // 2) Crear intent + state + idempotency record de forma atómica
     const intentId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+    const stateId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 
     await db.query('BEGIN');
 
     await db.query(
       `
-      INSERT INTO payment_intents (id, from_account, to_account, amount, currency)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO payment_intents (
+        id,
+        space_id,
+        payer_user_id,
+        payee_user_id,
+        currency,
+        amount_cents,
+        idempotency_key,
+        correlation_id
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       `,
-      [intentId, from_account.trim(), to_account.trim(), amount, currency.trim().toUpperCase()]
+      [
+        intentId,
+        spaceId,
+        payer_user_id,
+        payee_user_id,
+        currency.trim().toUpperCase(),
+        amount_cents,
+        idemKey,
+        correlationId,
+      ]
     );
 
+    // ✅ FIX: payment_intent_states usa (id, payment_intent_id, ...)
     await db.query(
       `
-      INSERT INTO payment_intent_states (intent_id, state, correlation_id)
-      VALUES ($1, $2, $3)
+      INSERT INTO payment_intent_states (id, payment_intent_id, state, correlation_id)
+      VALUES ($1, $2, $3, $4)
       `,
-      [intentId, 'created', correlationId]
+      [stateId, intentId, 'created', correlationId]
     );
 
     const responsePayload = {
@@ -146,9 +165,6 @@ router.post('/payment-intents', async (req, res, next) => {
       space_id: spaceId,
     };
 
-    // Insert idempotency row (usa el esquema real de tu DB)
-    // Si hay carrera (dos requests simultáneos), la UNIQUE constraint puede disparar.
-    // Usamos ON CONFLICT DO NOTHING y luego re-leemos.
     await db.query(
       `
       INSERT INTO idempotency_keys (space_id, scope, idem_key, request_hash, response_json)
@@ -160,7 +176,7 @@ router.post('/payment-intents', async (req, res, next) => {
 
     await db.query('COMMIT');
 
-    // Re-lee para asegurar que si hubo carrera devolvemos lo persistido
+    // Re-lee para cubrir carreras
     const saved = await db.query(
       `
       SELECT request_hash, response_json
@@ -171,9 +187,7 @@ router.post('/payment-intents', async (req, res, next) => {
       [spaceId, IDEM_SCOPE, idemKey]
     );
 
-    // Normalmente rowCount = 1
     if (saved.rowCount === 1) {
-      // Si por alguna razón el hash difiere, devuelves conflicto
       if (saved.rows[0].request_hash !== requestHash) {
         return res.status(409).json({
           error: 'idempotency_key_conflict',
@@ -183,12 +197,9 @@ router.post('/payment-intents', async (req, res, next) => {
       return res.status(201).json(saved.rows[0].response_json);
     }
 
-    // Fallback extremo (no debería pasar)
     return res.status(201).json(responsePayload);
   } catch (err) {
-    try {
-      await db.query('ROLLBACK');
-    } catch (_) {}
+    try { await db.query('ROLLBACK'); } catch (_) {}
     return next(err);
   }
 });

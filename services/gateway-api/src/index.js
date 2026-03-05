@@ -3,6 +3,8 @@
 const express = require('express');
 
 const paymentIntentsRouter = require('./routes/paymentIntents');
+const financialInboxRouter = require('./routes/financialInbox'); // si existe en tu repo
+const businessesInternal = require('./routes/internal/businesses');
 
 const app = express();
 
@@ -12,8 +14,10 @@ app.set('trust proxy', true);
 // Body parsing
 app.use(express.json({ limit: '1mb' }));
 
-// ---- Basic routes ----
+// ---- Internal routes ----
+app.use('/internal/v1/businesses', businessesInternal);
 
+// ---- Basic routes ----
 // Root (para evitar "Cannot GET /")
 app.get('/', (_req, res) => {
   res.status(200).send('OK - gateway-api up');
@@ -28,9 +32,11 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ---- API routes ----
-// Public Finance routes
+// ---- Public API routes ----
 app.use('/public/v1/finance', paymentIntentsRouter);
+
+// Si tu gateway ya tiene inbox, lo dejamos (no rompe nada si existe el archivo)
+app.use('/public/v1/financial-inbox', financialInboxRouter);
 
 // ---- Not Found ----
 app.use((_req, res) => {
@@ -42,7 +48,6 @@ app.use((_req, res) => {
 app.use((err, _req, res, _next) => {
   console.error('[gateway-api] error:', err);
 
-  // Si Express ya empezó a enviar headers, delega a default handler
   if (res.headersSent) return;
 
   const status = Number(err?.status || err?.statusCode || 500);
@@ -53,7 +58,7 @@ app.use((err, _req, res, _next) => {
 });
 /* eslint-enable no-unused-vars */
 
-const PORT = Number(process.env.PORT || 3010);
+const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {
@@ -68,7 +73,6 @@ function shutdown(signal) {
     process.exit(0);
   });
 
-  // fuerza salida si algo queda colgado
   setTimeout(() => {
     console.error('[gateway-api] forced shutdown');
     process.exit(1);
