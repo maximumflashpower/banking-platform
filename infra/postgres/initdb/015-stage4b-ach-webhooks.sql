@@ -1,3 +1,7 @@
+\c financial_db;
+
+BEGIN;
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS rails_webhook_events (
@@ -64,3 +68,5 @@ CREATE TRIGGER trg_rails_webhook_events_updated_at
 BEFORE UPDATE ON rails_webhook_events
 FOR EACH ROW
 EXECUTE FUNCTION set_rails_webhook_events_updated_at();
+
+COMMIT;

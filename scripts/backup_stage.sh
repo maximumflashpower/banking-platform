@@ -26,6 +26,9 @@ command -v tar >/dev/null 2>&1 || die "tar not found"
 command -v gzip >/dev/null 2>&1 || die "gzip not found"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum not found"
 command -v docker >/dev/null 2>&1 || die "docker not found"
+command -v find >/dev/null 2>&1 || die "find not found"
+command -v sort >/dev/null 2>&1 || die "sort not found"
+command -v awk >/dev/null 2>&1 || die "awk not found"
 
 docker ps >/dev/null 2>&1 || die "docker not running or not accessible"
 docker inspect banking_postgres >/dev/null 2>&1 || die "container banking_postgres not found"
@@ -50,20 +53,23 @@ log "--> Backing up project: $PROJECT_TGZ"
 tar -czf "$PROJECT_TGZ" "$HOME/projects/banking-platform" >/dev/null 2>&1 || die "project tar failed"
 
 log "--> Backing up identity DB: $IDENTITY_GZ"
-docker exec banking_postgres sh -lc 'pg_dump -U app identity' | gzip -c > "$IDENTITY_GZ" || die "identity pg_dump failed"
+docker exec banking_postgres sh -lc 'pg_dump -U app identity' | gzip -c > "$IDENTITY_GZ" \
+  || die "identity pg_dump failed"
 
 log "--> Backing up financial DB: $FINANCIAL_GZ"
-docker exec banking_postgres sh -lc 'pg_dump -U app financial_db' | gzip -c > "$FINANCIAL_GZ" || die "financial pg_dump failed"
+docker exec banking_postgres sh -lc 'pg_dump -U app financial_db' | gzip -c > "$FINANCIAL_GZ" \
+  || die "financial pg_dump failed"
 
 # ===========================
 # 2) Normalize old backups:
 #    compress *.sql -> *.sql.gz
 # ===========================
 log "--> Normalizing old backups (compressing .sql -> .sql.gz when found)..."
-for f in "$BACKUP_DIR"/*.sql "$BACKUP_DIR"/*_stage2_*.sql 2>/dev/null; do
+
+find "$BACKUP_DIR" -maxdepth 1 -type f \( -name '*.sql' -o -name '*_stage2_*.sql' \) -print 2>/dev/null \
+| while IFS= read -r f; do
   [ -f "$f" ] || continue
 
-  # if gzip exists, move duplicate .sql to trash
   if [ -f "${f}.gz" ]; then
     log "    - moving duplicate uncompressed to trash: $(basename "$f") (gz exists)"
     mv -f -- "$f" "$TRASH_DIR/" || true
@@ -82,49 +88,53 @@ rotate_to_trash() {
   pattern="$1"
   keep="$2"
 
-  files="$(ls -t $pattern 2>/dev/null || true)"
-  [ -n "$files" ] || return 0
-
-  echo "$files" | awk -v k="$keep" 'NR>k {print $0}' | while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    [ -f "$f" ] || continue
-    base="$(basename "$f")"
-    log "    - moving old -> trash: $base"
-    mv -f -- "$f" "$TRASH_DIR/$base" || true
-  done
+  find "$BACKUP_DIR" -maxdepth 1 -type f -name "$pattern" -printf '%T@ %p\n' 2>/dev/null \
+  | sort -nr \
+  | awk -v k="$keep" 'NR>k { sub(/^[^ ]+ /, "", $0); print $0 }' \
+  | while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      [ -f "$f" ] || continue
+      base="$(basename "$f")"
+      log "    - moving old -> trash: $base"
+      mv -f -- "$f" "$TRASH_DIR/$base" || true
+    done
 }
 
 log "--> Rotating backups (keeping last $KEEP per family; moving old to trash)..."
 
 # project families
-rotate_to_trash "$BACKUP_DIR/project_*.tar.gz" "$KEEP"
-rotate_to_trash "$BACKUP_DIR/project_stage2_clean_*.tar.gz" "$KEEP"
+rotate_to_trash 'project_*.tar.gz' "$KEEP"
+rotate_to_trash 'project_stage2_clean_*.tar.gz' "$KEEP"
 
-# identity families (gz and any lingering sql)
-rotate_to_trash "$BACKUP_DIR/identity_*.sql.gz" "$KEEP"
-rotate_to_trash "$BACKUP_DIR/identity_stage2_*.sql.gz" "$KEEP"
-rotate_to_trash "$BACKUP_DIR/identity_stage2_*.sql" "$KEEP"
+# identity families
+rotate_to_trash 'identity_*.sql.gz' "$KEEP"
+rotate_to_trash 'identity_stage2_*.sql.gz' "$KEEP"
+rotate_to_trash 'identity_stage2_*.sql' "$KEEP"
 
-# financial families (gz and any lingering sql)
-rotate_to_trash "$BACKUP_DIR/financial_*.sql.gz" "$KEEP"
-rotate_to_trash "$BACKUP_DIR/financial_stage2_*.sql.gz" "$KEEP"
-rotate_to_trash "$BACKUP_DIR/financial_stage2_*.sql" "$KEEP"
+# financial families
+rotate_to_trash 'financial_*.sql.gz' "$KEEP"
+rotate_to_trash 'financial_stage2_*.sql.gz' "$KEEP"
+rotate_to_trash 'financial_stage2_*.sql' "$KEEP"
 
 # ===========================
 # 4) Checksums for active backups only
 # ===========================
 log "--> Generating SHA256SUMS.txt for active backups..."
-(
-  cd "$BACKUP_DIR"
-  ls -1 \
-    project_*.tar.gz \
-    project_stage2_clean_*.tar.gz \
-    identity_*.sql.gz \
-    identity_stage2_*.sql.gz \
-    financial_*.sql.gz \
-    financial_stage2_*.sql.gz \
-    2>/dev/null | xargs -r sha256sum
-) > "$BACKUP_DIR/SHA256SUMS.txt"
+
+: > "$BACKUP_DIR/SHA256SUMS.txt"
+find "$BACKUP_DIR" -maxdepth 1 -type f \
+  \( -name 'project_*.tar.gz' \
+  -o -name 'project_stage2_clean_*.tar.gz' \
+  -o -name 'identity_*.sql.gz' \
+  -o -name 'identity_stage2_*.sql.gz' \
+  -o -name 'financial_*.sql.gz' \
+  -o -name 'financial_stage2_*.sql.gz' \) \
+  ! -name 'SHA256SUMS.txt' \
+  -print 2>/dev/null \
+| sort \
+| while IFS= read -r f; do
+    sha256sum "$f" >> "$BACKUP_DIR/SHA256SUMS.txt"
+  done
 
 # ===========================
 # 5) Trash retention cleanup
