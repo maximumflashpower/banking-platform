@@ -14,6 +14,7 @@ const stepUpStartInternal = require('./routes/internal/stepUpStart');
 const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit');
 const paymentsAchWebhookInternal = require('./routes/internal/paymentsAchWebhook');
 const stepUpRouter = require('./routes/stepUp');
+const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily');
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/internal/v1/cases', caseStateInternal);
 app.use('/internal/v1/cases', caseEvidenceInternal);
 app.use('/internal/v1/payments', paymentsAchSubmitInternal);
 app.use('/internal/v1/payments', paymentsAchWebhookInternal);
+app.use('/internal/v1', reconciliationRunDaily);
 
 // ---- Basic routes ----
 // Root (para evitar "Cannot GET /")
