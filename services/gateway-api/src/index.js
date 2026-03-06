@@ -39,12 +39,10 @@ app.use('/internal/v1/payments', paymentsAchSubmitInternal);
 app.use('/internal/v1/payments', paymentsAchWebhookInternal);
 
 // ---- Basic routes ----
-// Root (para evitar "Cannot GET /")
 app.get('/', (_req, res) => {
   res.status(200).send('OK - gateway-api up');
 });
 
-// Healthcheck (útil para compose/k8s)
 app.get('/health', (_req, res) => {
   res.status(200).json({
     ok: true,
@@ -56,8 +54,6 @@ app.get('/health', (_req, res) => {
 // ---- Public API routes ----
 app.use('/public/v1/finance', paymentIntentsRouter);
 app.use('/public/v1/finance', approvalsRouter);
-
-// Si tu gateway ya tiene inbox, lo dejamos
 app.use('/public/v1/financial-inbox', financialInboxRouter);
 app.use('/public/v1/auth', stepUpRouter);
 
@@ -88,7 +84,6 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`[gateway-api] listening on http://${HOST}:${PORT}`);
 });
 
-// ---- Graceful shutdown (Docker-friendly) ----
 function shutdown(signal) {
   console.log(`[gateway-api] received ${signal}, shutting down...`);
   server.close(() => {
