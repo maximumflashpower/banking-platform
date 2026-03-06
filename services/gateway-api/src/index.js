@@ -9,6 +9,8 @@ const businessesInternal = require('./routes/internal/businesses');
 const casesInternal = require('./routes/internal/cases');
 const caseAssignmentsInternal = require('./routes/internal/caseAssignments');
 const caseStateInternal = require('./routes/internal/caseState');
+const caseEvidenceInternal = require('./routes/internal/caseEvidence');
+const stepUpStartInternal = require('./routes/internal/stepUpStart');
 const stepUpRouter = require('./routes/stepUp');
 
 const app = express();
@@ -21,9 +23,11 @@ app.use(express.json({ limit: '1mb' }));
 
 // ---- Internal routes ----
 app.use('/internal/v1/businesses', businessesInternal);
+app.use('/internal/v1/security', stepUpStartInternal);
 app.use('/internal/v1/cases', casesInternal);
 app.use('/internal/v1/cases', caseAssignmentsInternal);
 app.use('/internal/v1/cases', caseStateInternal);
+app.use('/internal/v1/cases', caseEvidenceInternal);
 
 // ---- Basic routes ----
 // Root (para evitar "Cannot GET /")

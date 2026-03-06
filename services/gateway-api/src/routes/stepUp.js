@@ -67,10 +67,10 @@ router.post('/step-up/verify', async (req, res, next) => {
         SELECT s.id, s.state, s.verification_method, s.verified_at, s.expires_at
         FROM step_up_events e
         JOIN step_up_sessions s ON s.id = e.step_up_session_id
-        WHERE e.idempotency_key = $1
+        WHERE e.idempotency_key IN ($1, $2)
         LIMIT 1
         `,
-        [idempotencyKey]
+        [idempotencyKey, `${idempotencyKey}:event:verification_succeeded`]
       );
 
       if (replay.rowCount > 0) {
@@ -91,7 +91,7 @@ router.post('/step-up/verify', async (req, res, next) => {
         WHERE id = $1
         FOR UPDATE
         `,
-        [step_up_session_id]
+        [step_up_session_id.trim()]
       );
 
       if (found.rowCount === 0) {
@@ -230,6 +230,28 @@ router.post('/step-up/verify', async (req, res, next) => {
           },
         };
       }
+
+      await client.query(
+        `
+        INSERT INTO step_up_events (
+          id, step_up_session_id, event_type, from_state, to_state,
+          actor_type, actor_id, device_id, metadata,
+          idempotency_key, correlation_id, request_id
+        )
+        VALUES ($1,$2,'verification_succeeded',$3,$4,'user',NULL,$5,$6::jsonb,$7,$8,$9)
+        `,
+        [
+          uuid(),
+          s.id,
+          s.state,
+          s.state,
+          device_id,
+          JSON.stringify({ verification_method }),
+          `${idempotencyKey}:event:verification_succeeded`,
+          correlationId,
+          requestId,
+        ]
+      );
 
       await client.query(
         `
