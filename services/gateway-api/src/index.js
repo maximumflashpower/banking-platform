@@ -2,8 +2,9 @@
 
 const express = require('express');
 
+const approvalsRouter = require('./routes/approvals');
 const paymentIntentsRouter = require('./routes/paymentIntents');
-const financialInboxRouter = require('./routes/financialInbox'); // si existe en tu repo
+const financialInboxRouter = require('./routes/financialInbox');
 const businessesInternal = require('./routes/internal/businesses');
 
 const app = express();
@@ -34,8 +35,9 @@ app.get('/health', (_req, res) => {
 
 // ---- Public API routes ----
 app.use('/public/v1/finance', paymentIntentsRouter);
+app.use('/public/v1/finance', approvalsRouter);
 
-// Si tu gateway ya tiene inbox, lo dejamos (no rompe nada si existe el archivo)
+// Si tu gateway ya tiene inbox, lo dejamos
 app.use('/public/v1/financial-inbox', financialInboxRouter);
 
 // ---- Not Found ----

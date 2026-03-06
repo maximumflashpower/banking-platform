@@ -37,11 +37,78 @@ function sha256Hex(s) {
   return crypto.createHash('sha256').update(s).digest('hex');
 }
 
+function envInt(name, fallback) {
+  const raw = process.env[name];
+  if (typeof raw !== 'string' || raw.trim() === '') return fallback;
+
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+
+  return Math.trunc(n);
+}
+
+function envStr(name, fallback) {
+  const raw = process.env[name];
+  return (typeof raw === 'string' && raw.trim()) ? raw.trim() : fallback;
+}
+
+function approvalPolicyForSpace(_spaceId) {
+  const thresholdAmountCents = Math.max(0, envInt('PAYMENT_APPROVAL_THRESHOLD_CENTS', 100000));
+  const requiredApprovals = Math.max(1, envInt('PAYMENT_APPROVAL_REQUIRED_APPROVALS', 2));
+  const rejectionMode = envStr('PAYMENT_APPROVAL_REJECTION_MODE', 'any') === 'majority'
+    ? 'majority'
+    : 'any';
+
+  const eligibleVotersCount = Math.max(
+    requiredApprovals,
+    envInt('PAYMENT_APPROVAL_ELIGIBLE_VOTERS', requiredApprovals)
+  );
+
+  return {
+    policy_version: 'v1',
+    threshold_amount_cents: thresholdAmountCents,
+    required_approvals: requiredApprovals,
+    eligible_voters_count: eligibleVotersCount,
+    rejection_mode: rejectionMode,
+  };
+}
+
+async function insertIntentState(client, {
+  paymentIntentId,
+  state,
+  correlationId,
+  reasonCode = null,
+  reasonDetail = null,
+}) {
+  await client.query(
+    `
+    INSERT INTO payment_intent_states (
+      id,
+      payment_intent_id,
+      state,
+      reason_code,
+      reason_detail,
+      correlation_id,
+      created_at,
+      updated_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, clock_timestamp(), clock_timestamp())
+    `,
+    [
+      crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
+      paymentIntentId,
+      state,
+      reasonCode,
+      reasonDetail,
+      correlationId,
+    ]
+  );
+}
+
 router.post('/payment-intents', async (req, res, next) => {
   const idemKey = req.header('Idempotency-Key');
 
   try {
-    // --- Validaciones base ---
     if (!isNonEmptyString(idemKey)) {
       return res.status(400).json({
         error: 'invalid_request',
@@ -80,19 +147,18 @@ router.post('/payment-intents', async (req, res, next) => {
       });
     }
 
+    const normalizedCurrency = currency.trim().toUpperCase();
     const correlationId = getCorrelationId(req);
 
-    // --- Idempotencia: request_hash ---
     const requestHash = sha256Hex(
       JSON.stringify({
         payer_user_id,
         payee_user_id,
         amount_cents,
-        currency: currency.trim().toUpperCase(),
+        currency: normalizedCurrency,
       })
     );
 
-    // 1) Buscar si ya existe (space_id + scope + idem_key)
     const existing = await db.query(
       `
       SELECT request_hash, response_json
@@ -116,9 +182,9 @@ router.post('/payment-intents', async (req, res, next) => {
       return res.status(200).json(row.response_json);
     }
 
-    // 2) Crear intent + state + idempotency record de forma atómica
     const intentId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
-    const stateId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+    const policy = approvalPolicyForSpace(spaceId);
+    const requiresApproval = amount_cents >= policy.threshold_amount_cents;
 
     await db.query('BEGIN');
 
@@ -141,28 +207,93 @@ router.post('/payment-intents', async (req, res, next) => {
         spaceId,
         payer_user_id,
         payee_user_id,
-        currency.trim().toUpperCase(),
+        normalizedCurrency,
         amount_cents,
         idemKey,
         correlationId,
       ]
     );
 
-    // ✅ FIX: payment_intent_states usa (id, payment_intent_id, ...)
-    await db.query(
-      `
-      INSERT INTO payment_intent_states (id, payment_intent_id, state, correlation_id)
-      VALUES ($1, $2, $3, $4)
-      `,
-      [stateId, intentId, 'created', correlationId]
-    );
+    await insertIntentState(db, {
+      paymentIntentId: intentId,
+      state: 'created',
+      correlationId,
+    });
+
+    await insertIntentState(db, {
+      paymentIntentId: intentId,
+      state: 'validated',
+      correlationId,
+    });
+
+    if (requiresApproval) {
+      await db.query(
+        `
+        INSERT INTO payment_approvals (
+          id,
+          space_id,
+          business_id,
+          payment_intent_id,
+          status,
+          policy_version,
+          threshold_amount_cents,
+          required_approvals,
+          eligible_voters_count,
+          rejection_mode,
+          created_by_member_id,
+          metadata
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          'pending',
+          $5,$6,$7,$8,$9,$10,$11::jsonb
+        )
+        ON CONFLICT (payment_intent_id) DO NOTHING
+        `,
+        [
+          crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
+          spaceId,
+          spaceId, // v1: business_id = space_id
+          intentId,
+          policy.policy_version,
+          policy.threshold_amount_cents,
+          policy.required_approvals,
+          policy.eligible_voters_count,
+          policy.rejection_mode,
+          null,
+          JSON.stringify({
+            correlation_id: correlationId,
+            policy_snapshot: policy,
+            stage: 'stage3c-payment-approvals',
+          }),
+        ]
+      );
+
+      await insertIntentState(db, {
+        paymentIntentId: intentId,
+        state: 'pending_approval',
+        correlationId,
+      });
+    }
 
     const responsePayload = {
       ok: true,
       intent_id: intentId,
-      state: 'created',
+      state: requiresApproval ? 'pending_approval' : 'validated',
       correlation_id: correlationId,
       space_id: spaceId,
+      approval: requiresApproval
+        ? {
+            required: true,
+            threshold_amount_cents: policy.threshold_amount_cents,
+            required_approvals: policy.required_approvals,
+            eligible_voters_count: policy.eligible_voters_count,
+            rejection_mode: policy.rejection_mode,
+            policy_version: policy.policy_version,
+          }
+        : {
+            required: false,
+          },
     };
 
     await db.query(
@@ -176,7 +307,6 @@ router.post('/payment-intents', async (req, res, next) => {
 
     await db.query('COMMIT');
 
-    // Re-lee para cubrir carreras
     const saved = await db.query(
       `
       SELECT request_hash, response_json
