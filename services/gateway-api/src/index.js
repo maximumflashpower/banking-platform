@@ -11,6 +11,7 @@ const caseAssignmentsInternal = require('./routes/internal/caseAssignments');
 const caseStateInternal = require('./routes/internal/caseState');
 const caseEvidenceInternal = require('./routes/internal/caseEvidence');
 const stepUpStartInternal = require('./routes/internal/stepUpStart');
+const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit');
 const stepUpRouter = require('./routes/stepUp');
 
 const app = express();
@@ -28,6 +29,7 @@ app.use('/internal/v1/cases', casesInternal);
 app.use('/internal/v1/cases', caseAssignmentsInternal);
 app.use('/internal/v1/cases', caseStateInternal);
 app.use('/internal/v1/cases', caseEvidenceInternal);
+app.use('/internal/v1/payments', paymentsAchSubmitInternal);
 
 // ---- Basic routes ----
 // Root (para evitar "Cannot GET /")
