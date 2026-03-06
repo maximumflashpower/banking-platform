@@ -1,3 +1,5 @@
+\connect financial_db;
+
 create extension if not exists pgcrypto;
 
 create table if not exists rails_transfers_ach (

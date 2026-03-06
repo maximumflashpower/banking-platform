@@ -20,6 +20,10 @@ function getCorrelationId(req) {
   return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 }
 
+function newUuid() {
+  return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+}
+
 function isNonEmptyString(x) {
   return typeof x === 'string' && x.trim().length > 0;
 }
@@ -95,7 +99,7 @@ async function insertIntentState(client, {
     VALUES ($1, $2, $3, $4, $5, $6, clock_timestamp(), clock_timestamp())
     `,
     [
-      crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
+      newUuid(),
       paymentIntentId,
       state,
       reasonCode,
@@ -182,9 +186,10 @@ router.post('/payment-intents', async (req, res, next) => {
       return res.status(200).json(row.response_json);
     }
 
-    const intentId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+    const intentId = newUuid();
     const policy = approvalPolicyForSpace(spaceId);
     const requiresApproval = amount_cents >= policy.threshold_amount_cents;
+    const finalState = requiresApproval ? 'pending_approval' : 'queued';
 
     await db.query('BEGIN');
 
@@ -251,9 +256,9 @@ router.post('/payment-intents', async (req, res, next) => {
         ON CONFLICT (payment_intent_id) DO NOTHING
         `,
         [
-          crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'),
+          newUuid(),
           spaceId,
-          spaceId, // v1: business_id = space_id
+          spaceId,
           intentId,
           policy.policy_version,
           policy.threshold_amount_cents,
@@ -274,12 +279,18 @@ router.post('/payment-intents', async (req, res, next) => {
         state: 'pending_approval',
         correlationId,
       });
+    } else {
+      await insertIntentState(db, {
+        paymentIntentId: intentId,
+        state: 'queued',
+        correlationId,
+      });
     }
 
     const responsePayload = {
       ok: true,
       intent_id: intentId,
-      state: requiresApproval ? 'pending_approval' : 'validated',
+      state: finalState,
       correlation_id: correlationId,
       space_id: spaceId,
       approval: requiresApproval
