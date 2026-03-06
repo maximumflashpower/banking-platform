@@ -1,12 +1,57 @@
+BEGIN;
+
+-- =========================
+-- payment_intents
+-- =========================
+CREATE TABLE IF NOT EXISTS public.payment_intents (
+    id UUID PRIMARY KEY,
+    space_id UUID NOT NULL,
+    payer_user_id UUID NOT NULL,
+    payee_user_id UUID NOT NULL,
+    currency CHAR(3) NOT NULL,
+    amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
+    idempotency_key TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_payment_intents_space_created
+    ON public.payment_intents(space_id, created_at DESC);
+
+-- =========================
+-- payment_intent_states
+-- =========================
+CREATE TABLE IF NOT EXISTS public.payment_intent_states (
+    id UUID PRIMARY KEY,
+    payment_intent_id UUID NOT NULL REFERENCES public.payment_intents(id) ON DELETE CASCADE,
+    state TEXT NOT NULL CHECK (
+        state IN (
+          'created',
+          'validated',
+          'pending_approval',
+          'approved',
+          'queued',
+          'settled',
+          'rejected',
+          'failed',
+          'canceled'
+        )
+    ),
+    reason_code TEXT NULL,
+    reason_detail TEXT NULL,
+    correlation_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_payment_intent_states_intent
+    ON public.payment_intent_states(payment_intent_id, state, created_at ASC);
+
 -- =========================
 -- Stage 3C — Payment Approvals
--- financial-db schema
 -- =========================
-
--- Requiere: pgcrypto para gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Enums
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_approval_status') THEN
@@ -18,40 +63,26 @@ BEGIN
   END IF;
 END$$;
 
--- -------------------------
--- Tabla principal (1 approval por payment_intent)
--- -------------------------
-CREATE TABLE IF NOT EXISTS payment_approvals (
+CREATE TABLE IF NOT EXISTS public.payment_approvals (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-
   space_id              uuid NOT NULL,
   business_id           uuid NOT NULL,
-
-  payment_intent_id     uuid NOT NULL UNIQUE,
-
+  payment_intent_id     uuid NOT NULL UNIQUE REFERENCES public.payment_intents(id) ON DELETE CASCADE,
   status                payment_approval_status NOT NULL DEFAULT 'pending',
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
   resolved_at           timestamptz NULL,
-
-  -- Snapshot policy (auditable)
   policy_version        text NOT NULL DEFAULT 'v1',
-
   threshold_amount_cents  bigint NOT NULL CHECK (threshold_amount_cents >= 0),
   required_approvals      int NOT NULL CHECK (required_approvals >= 1),
   eligible_voters_count   int NOT NULL CHECK (eligible_voters_count >= 0),
-
   approvals_count       int NOT NULL DEFAULT 0 CHECK (approvals_count >= 0),
   rejections_count      int NOT NULL DEFAULT 0 CHECK (rejections_count >= 0),
-
   rejection_mode        text NOT NULL DEFAULT 'majority' CHECK (rejection_mode IN ('any','majority')),
   expires_at            timestamptz NULL,
-
   created_by_member_id  uuid NULL,
   resolution_reason     text NULL,
-
   metadata              jsonb NOT NULL DEFAULT '{}'::jsonb,
-
   CONSTRAINT payment_approvals_status_resolved_at_chk
     CHECK (
       (status = 'pending' AND resolved_at IS NULL)
@@ -61,57 +92,46 @@ CREATE TABLE IF NOT EXISTS payment_approvals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_approvals_space_status_created
-  ON payment_approvals (space_id, status, created_at DESC);
+  ON public.payment_approvals (space_id, status, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_payment_approvals_business_status_created
-  ON payment_approvals (business_id, status, created_at DESC);
+  ON public.payment_approvals (business_id, status, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_payment_approvals_intent
-  ON payment_approvals (payment_intent_id);
+  ON public.payment_approvals (payment_intent_id);
 
--- updated_at helper
-CREATE OR REPLACE FUNCTION set_updated_at()
+CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS trigger AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END; $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_payment_approvals_set_updated_at ON payment_approvals;
+DROP TRIGGER IF EXISTS trg_payment_approvals_set_updated_at ON public.payment_approvals;
 CREATE TRIGGER trg_payment_approvals_set_updated_at
-BEFORE UPDATE ON payment_approvals
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+BEFORE UPDATE ON public.payment_approvals
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
--- -------------------------
--- Votes (1 voto por member)
--- -------------------------
-CREATE TABLE IF NOT EXISTS payment_approval_votes (
+CREATE TABLE IF NOT EXISTS public.payment_approval_votes (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  approval_id     uuid NOT NULL REFERENCES payment_approvals(id) ON DELETE CASCADE,
-
+  approval_id     uuid NOT NULL REFERENCES public.payment_approvals(id) ON DELETE CASCADE,
   space_id        uuid NOT NULL,
   business_id     uuid NOT NULL,
-
   member_id       uuid NOT NULL,
   vote            payment_approval_vote NOT NULL,
-
   created_at      timestamptz NOT NULL DEFAULT now(),
   comment         text NULL,
   metadata        jsonb NOT NULL DEFAULT '{}'::jsonb,
-
   CONSTRAINT payment_approval_votes_one_per_member UNIQUE (approval_id, member_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_approval_votes_approval
-  ON payment_approval_votes (approval_id, created_at ASC);
+  ON public.payment_approval_votes (approval_id, created_at ASC);
 
 CREATE INDEX IF NOT EXISTS idx_payment_approval_votes_space_member
-  ON payment_approval_votes (space_id, member_id, created_at DESC);
+  ON public.payment_approval_votes (space_id, member_id, created_at DESC);
 
--- -------------------------
--- Recompute + auto-resolve
--- -------------------------
-CREATE OR REPLACE FUNCTION payment_approvals_recompute_and_resolve(p_approval_id uuid)
+CREATE OR REPLACE FUNCTION public.payment_approvals_recompute_and_resolve(p_approval_id uuid)
 RETURNS void AS $$
 DECLARE
   a_count int;
@@ -125,16 +145,16 @@ BEGIN
     COALESCE(SUM(CASE WHEN v.vote='approve' THEN 1 ELSE 0 END),0),
     COALESCE(SUM(CASE WHEN v.vote='reject'  THEN 1 ELSE 0 END),0)
   INTO a_count, r_count
-  FROM payment_approval_votes v
+  FROM public.payment_approval_votes v
   WHERE v.approval_id = p_approval_id;
 
   SELECT status, required_approvals, eligible_voters_count, rejection_mode
   INTO current_status, req, elig, rej_mode
-  FROM payment_approvals
+  FROM public.payment_approvals
   WHERE id = p_approval_id
   FOR UPDATE;
 
-  UPDATE payment_approvals
+  UPDATE public.payment_approvals
   SET approvals_count = a_count,
       rejections_count = r_count
   WHERE id = p_approval_id;
@@ -144,35 +164,37 @@ BEGIN
   END IF;
 
   IF a_count >= req THEN
-    UPDATE payment_approvals
+    UPDATE public.payment_approvals
     SET status='approved', resolved_at=now()
     WHERE id=p_approval_id;
     RETURN;
   END IF;
 
   IF rej_mode = 'any' AND r_count >= 1 THEN
-    UPDATE payment_approvals
+    UPDATE public.payment_approvals
     SET status='rejected', resolved_at=now(), resolution_reason='rejected_by_any'
     WHERE id=p_approval_id;
     RETURN;
   END IF;
 
   IF rej_mode = 'majority' AND elig > 0 AND r_count > (elig / 2) THEN
-    UPDATE payment_approvals
+    UPDATE public.payment_approvals
     SET status='rejected', resolved_at=now(), resolution_reason='rejected_by_majority'
     WHERE id=p_approval_id;
     RETURN;
   END IF;
 END; $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION trg_payment_approval_votes_after_insert()
+CREATE OR REPLACE FUNCTION public.trg_payment_approval_votes_after_insert()
 RETURNS trigger AS $$
 BEGIN
-  PERFORM payment_approvals_recompute_and_resolve(NEW.approval_id);
+  PERFORM public.payment_approvals_recompute_and_resolve(NEW.approval_id);
   RETURN NEW;
 END; $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_payment_approval_votes_after_insert ON payment_approval_votes;
+DROP TRIGGER IF EXISTS trg_payment_approval_votes_after_insert ON public.payment_approval_votes;
 CREATE TRIGGER trg_payment_approval_votes_after_insert
-AFTER INSERT ON payment_approval_votes
-FOR EACH ROW EXECUTE FUNCTION trg_payment_approval_votes_after_insert();
+AFTER INSERT ON public.payment_approval_votes
+FOR EACH ROW EXECUTE FUNCTION public.trg_payment_approval_votes_after_insert();
+
+COMMIT;
