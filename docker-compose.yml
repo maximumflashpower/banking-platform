@@ -20,6 +20,9 @@ services:
       # Financial DB (ledger core)
       FINANCIAL_DATABASE_URL: postgres://app:app@db:5432/financial_db
 
+      # Case DB (stage 3d case management)
+      CASE_DATABASE_URL: postgres://app:app@db:5432/case_db
+
     volumes:
       - .:/app
       - /app/node_modules
