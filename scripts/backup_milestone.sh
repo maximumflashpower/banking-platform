@@ -11,8 +11,22 @@ OUTDIR="$HOME/backups/banking-platform/milestones"
 
 mkdir -p "$OUTDIR"
 
-# backup working tree actual
-tar -czf "$OUTDIR/${MILESTONE}_${DATE}.tar.gz" -C "$ROOT" "$REPO"
+normalize_tag() {
+  tag="$1"
+  case "$tag" in
+    *_"$DATE")
+      printf '%s' "$tag"
+      ;;
+    *)
+      printf '%s_%s' "$tag" "$DATE"
+      ;;
+  esac
+}
 
-echo "OK: $OUTDIR/${MILESTONE}_${DATE}.tar.gz"
-ls -lh "$OUTDIR/${MILESTONE}_${DATE}.tar.gz"
+SAFE_TAG="$(normalize_tag "$MILESTONE")"
+OUTFILE="$OUTDIR/${SAFE_TAG}.tar.gz"
+
+tar -czf "$OUTFILE" -C "$ROOT" "$REPO"
+
+echo "OK: $OUTFILE"
+ls -lh "$OUTFILE"

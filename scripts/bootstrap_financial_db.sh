@@ -25,7 +25,7 @@ if [ ! -d "$SQL_DIR" ]; then
 fi
 
 echo "[bootstrap] waiting for postgres..."
-for i in {1..60}; do
+for _ in {1..60}; do
   if docker exec "$CONTAINER" sh -lc "pg_isready -U '$DB_USER' -d postgres >/dev/null 2>&1"; then
     break
   fi
@@ -45,7 +45,7 @@ fi
 "
 
 echo "[bootstrap] waiting for database to accept connections..."
-for i in {1..30}; do
+for _ in {1..30}; do
   if docker exec "$CONTAINER" sh -lc "psql -U '$DB_USER' -d '$FIN_DB' -c 'select 1' >/dev/null 2>&1"; then
     break
   fi
@@ -63,9 +63,22 @@ run_sql() {
   docker exec -i "$CONTAINER" sh -lc "psql -U '$DB_USER' -d '$FIN_DB' -v ON_ERROR_STOP=1" < "$file"
 }
 
-run_sql "$SQL_DIR/idempotency_keys.sql"
-run_sql "$SQL_DIR/payment_intents.sql"
-run_sql "$SQL_DIR/payment_intent_states.sql"
-run_sql "$SQL_DIR/020_stage2e_ops_inbox_freeze.sql"
+SQL_FILES=(
+  "idempotency_keys.sql"
+  "ledger_accounts.sql"
+  "ledger_journal_entries.sql"
+  "ledger_postings.sql"
+  "payment_intents.sql"
+  "payment_intent_states.sql"
+  "payment_approvals.sql"
+  "rails_transfers_ach.sql"
+  "rails_webhook_events.sql"
+  "financial_outbox.sql"
+  "020_stage2e_ops_inbox_freeze.sql"
+)
+
+for sql_file in "${SQL_FILES[@]}"; do
+  run_sql "$SQL_DIR/$sql_file"
+done
 
 echo "[bootstrap] done ✅"
