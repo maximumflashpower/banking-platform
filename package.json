@@ -5,7 +5,8 @@
     "node": ">=20.11.1 <21"
   },
   "scripts": {
-    "dev": "node src/index.js"
+    "dev": "node src/index.js",
+    "bootstrap:cards-db": "./scripts/bootstrap_cards_db.sh"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

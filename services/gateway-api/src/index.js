@@ -18,15 +18,18 @@ const stepUpStartInternal = require('./routes/internal/stepUpStart');
 const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit');
 const paymentsAchWebhookInternal = require('./routes/internal/paymentsAchWebhook');
 
-// Stage 4C
+// Stage 4C / 4E
 const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily');
+const reconciliationRunsInternal = require('./routes/internal/reconciliationRuns');
+const reconciliationActionsInternal = require('./routes/internal/reconciliationActions');
+
+// Stage 5A
+const internalCardsRouter = require('./routes/internal/cards');
 
 const app = express();
 
-// ---- Trust proxy (docker / k8s / nginx) ----
 app.set('trust proxy', true);
 
-// ---- Body parsing ----
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
@@ -52,17 +55,21 @@ app.use('/internal/v1/payments', paymentsAchWebhookInternal);
 // Stage 4C
 app.use('/internal/v1', reconciliationRunDaily);
 
+// Stage 4E
+app.use('/internal/v1/reconciliation/runs', reconciliationRunsInternal);
+app.use('/internal/v1/reconciliation/actions', reconciliationActionsInternal);
+
+// Stage 5A
+app.use('/internal/v1/cards', internalCardsRouter);
 
 // =============================
 // BASIC ROUTES
 // =============================
 
-// Root
 app.get('/', (_req, res) => {
   res.status(200).send('OK - gateway-api up');
 });
 
-// Healthcheck
 app.get('/health', (_req, res) => {
   res.status(200).json({
     ok: true,
@@ -70,7 +77,6 @@ app.get('/health', (_req, res) => {
     env: process.env.NODE_ENV || 'development',
   });
 });
-
 
 // =============================
 // PUBLIC API
@@ -82,7 +88,6 @@ app.use('/public/v1/finance', approvalsRouter);
 app.use('/public/v1/financial-inbox', financialInboxRouter);
 app.use('/public/v1/auth', stepUpRouter);
 
-
 // =============================
 // NOT FOUND
 // =============================
@@ -93,7 +98,6 @@ app.use((_req, res) => {
     path: _req.originalUrl,
   });
 });
-
 
 // =============================
 // ERROR HANDLER
@@ -112,7 +116,6 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-
 // =============================
 // SERVER START
 // =============================
@@ -124,13 +127,11 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`[gateway-api] listening on http://${HOST}:${PORT}`);
 });
 
-
 // =============================
 // GRACEFUL SHUTDOWN
 // =============================
 
 function shutdown(signal) {
-
   console.log(`[gateway-api] received ${signal}, shutting down...`);
 
   server.close(() => {
