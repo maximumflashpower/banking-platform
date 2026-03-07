@@ -75,6 +75,7 @@ run_sql "$SQL_DIR/rails_webhook_events.sql"
 run_sql "$SQL_DIR/financial_outbox.sql"
 run_sql "$SQL_DIR/reconciliation_runs.sql"
 run_sql "$SQL_DIR/reconciliation_items.sql"
+run_sql "$SQL_DIR/reconciliation_actions.sql"
 run_sql "$SQL_DIR/020_stage2e_ops_inbox_freeze.sql"
 
 echo "[bootstrap] done ✅"

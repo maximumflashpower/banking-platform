@@ -67,6 +67,37 @@ router.post('/:id/state', async (req, res, next) => {
     }
 
     const result = await db.withTransaction(async (client) => {
+      const replay = await client.query(
+        `
+        SELECT case_id
+        FROM case_timeline
+        WHERE idempotency_key = $1
+        LIMIT 1
+        `,
+        [`${idempotencyKey}:timeline:case_status_changed`]
+      );
+
+      if (replay.rowCount > 0) {
+        const existingCase = await client.query(
+          `
+          SELECT id, case_number, state, resolution_code, closure_reason, resolved_at, closed_at
+          FROM cases
+          WHERE id = $1
+          LIMIT 1
+          `,
+          [replay.rows[0].case_id]
+        );
+
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            case: existingCase.rows[0],
+            idempotent_replay: true,
+          },
+        };
+      }
+
       const found = await client.query(
         `
         SELECT id, case_number, state, current_assignment_id, resolution_code, closure_reason, resolved_at, closed_at
@@ -167,7 +198,7 @@ router.post('/:id/state', async (req, res, next) => {
             closure_reason = $4::varchar,
             correlation_id = $5::varchar,
             request_id = $6::varchar,
-            updated_by = 'system',
+            updated_by = '00000000-0000-0000-0000-000000000000'::uuid,
             updated_at = now()
         WHERE id = $1
         `,
