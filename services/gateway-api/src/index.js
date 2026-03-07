@@ -18,25 +18,23 @@ const stepUpStartInternal = require('./routes/internal/stepUpStart');
 const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit');
 const paymentsAchWebhookInternal = require('./routes/internal/paymentsAchWebhook');
 
+// ---- Reconciliation routers ----
 // Stage 4C
 const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily');
+// Stage 4E
+const reconciliationRunsInternal = require('./routes/internal/reconciliationRuns');
+const reconciliationActionsInternal = require('./routes/internal/reconciliationActions');
 
 const app = express();
 
-// ---- Trust proxy (docker / k8s / nginx) ----
 app.set('trust proxy', true);
 
-// ---- Body parsing ----
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
     req.rawBody = buf.toString('utf8');
   },
 }));
-
-// =============================
-// INTERNAL API
-// =============================
 
 app.use('/internal/v1/businesses', businessesInternal);
 app.use('/internal/v1/security', stepUpStartInternal);
@@ -49,20 +47,15 @@ app.use('/internal/v1/cases', caseEvidenceInternal);
 app.use('/internal/v1/payments', paymentsAchSubmitInternal);
 app.use('/internal/v1/payments', paymentsAchWebhookInternal);
 
-// Stage 4C
+// Reconciliation
 app.use('/internal/v1', reconciliationRunDaily);
+app.use('/internal/v1', reconciliationRunsInternal);
+app.use('/internal/v1', reconciliationActionsInternal);
 
-
-// =============================
-// BASIC ROUTES
-// =============================
-
-// Root
 app.get('/', (_req, res) => {
   res.status(200).send('OK - gateway-api up');
 });
 
-// Healthcheck
 app.get('/health', (_req, res) => {
   res.status(200).json({
     ok: true,
@@ -71,21 +64,10 @@ app.get('/health', (_req, res) => {
   });
 });
 
-
-// =============================
-// PUBLIC API
-// =============================
-
 app.use('/public/v1/finance', paymentIntentsRouter);
 app.use('/public/v1/finance', approvalsRouter);
-
 app.use('/public/v1/financial-inbox', financialInboxRouter);
 app.use('/public/v1/auth', stepUpRouter);
-
-
-// =============================
-// NOT FOUND
-// =============================
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -93,11 +75,6 @@ app.use((_req, res) => {
     path: _req.originalUrl,
   });
 });
-
-
-// =============================
-// ERROR HANDLER
-// =============================
 
 app.use((err, _req, res, _next) => {
   console.error('[gateway-api] error:', err);
@@ -112,11 +89,6 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-
-// =============================
-// SERVER START
-// =============================
-
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
 
@@ -124,13 +96,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`[gateway-api] listening on http://${HOST}:${PORT}`);
 });
 
-
-// =============================
-// GRACEFUL SHUTDOWN
-// =============================
-
 function shutdown(signal) {
-
   console.log(`[gateway-api] received ${signal}, shutting down...`);
 
   server.close(() => {
