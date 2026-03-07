@@ -24,6 +24,9 @@ services:
       # Case DB (stage 3d case management)
       CASE_DATABASE_URL: postgres://app:app@db:5432/case_db
 
+      # Cards DB (stage 5A)
+      CARDS_DATABASE_URL: postgres://app:app@db:5432/cards_db
+
     volumes:
       - .:/app
       - /app/node_modules
