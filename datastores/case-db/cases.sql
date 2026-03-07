@@ -1,92 +1,93 @@
-create table if not exists cases (
-  id uuid primary key,
-  case_number bigint generated always as identity unique,
+CREATE TABLE IF NOT EXISTS cases (
+  id uuid PRIMARY KEY,
+  case_number bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
 
-  domain varchar(32) not null check (
-    domain in ('aml_risk', 'support', 'disputes', 'recovery', 'legal_hold')
+  domain varchar(32) NOT NULL CHECK (
+    domain IN ('aml_risk', 'support', 'disputes', 'recovery', 'legal_hold', 'operations')
   ),
 
-  origin varchar(32) not null check (
-    origin in (
+  origin varchar(32) NOT NULL CHECK (
+    origin IN (
       'risk_signal',
       'payment_rejection',
       'fraud_detection',
       'user_report',
       'support_ticket',
-      'manual'
+      'manual',
+      'reconciliation_mismatch'
     )
   ),
 
-  state varchar(32) not null check (
-    state in ('open', 'in_review', 'escalated', 'resolved', 'closed')
+  state varchar(32) NOT NULL CHECK (
+    state IN ('open', 'in_review', 'escalated', 'resolved', 'closed')
   ),
 
-  priority varchar(16) not null default 'normal' check (
-    priority in ('low', 'normal', 'high', 'urgent')
+  priority varchar(16) NOT NULL DEFAULT 'normal' CHECK (
+    priority IN ('low', 'normal', 'high', 'urgent')
   ),
 
-  severity varchar(16) not null default 'medium' check (
-    severity in ('low', 'medium', 'high', 'critical')
+  severity varchar(16) NOT NULL DEFAULT 'medium' CHECK (
+    severity IN ('low', 'medium', 'high', 'critical')
   ),
 
-  title varchar(200) not null,
-  summary text not null,
+  title varchar(200) NOT NULL,
+  summary text NOT NULL,
 
-  business_id uuid null,
-  user_id uuid null,
+  business_id uuid NULL,
+  user_id uuid NULL,
 
-  source_system varchar(64) null,
-  source_reference varchar(128) null,
+  source_system varchar(64) NULL,
+  source_reference varchar(128) NULL,
 
-  external_object_type varchar(64) null,
-  external_object_id varchar(128) null,
+  external_object_type varchar(64) NULL,
+  external_object_id varchar(128) NULL,
 
-  opened_at timestamptz not null default now(),
-  resolved_at timestamptz null,
-  closed_at timestamptz null,
+  opened_at timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz NULL,
+  closed_at timestamptz NULL,
 
-  resolution_code varchar(64) null,
-  closure_reason varchar(128) null,
+  resolution_code varchar(64) NULL,
+  closure_reason varchar(128) NULL,
 
-  current_assignment_id uuid null,
+  current_assignment_id uuid NULL,
 
-  dedupe_key varchar(256) null,
-  idempotency_key varchar(128) not null,
-  correlation_id varchar(128) null,
-  request_id varchar(128) null,
+  dedupe_key varchar(256) NULL,
+  idempotency_key varchar(128) NOT NULL,
+  correlation_id varchar(128) NULL,
+  request_id varchar(128) NULL,
 
-  created_by uuid not null,
-  updated_by uuid not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
+  created_by uuid NOT NULL,
+  updated_by uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
 
-  constraint uq_cases_idempotency unique (idempotency_key),
-  constraint uq_cases_dedupe unique (dedupe_key),
+  CONSTRAINT uq_cases_idempotency UNIQUE (idempotency_key),
+  CONSTRAINT uq_cases_dedupe UNIQUE (dedupe_key),
 
-  constraint chk_cases_resolved_fields check (
+  CONSTRAINT chk_cases_resolved_fields CHECK (
     (state <> 'resolved')
-    or
-    (resolved_at is not null and resolution_code is not null)
+    OR
+    (resolved_at IS NOT NULL AND resolution_code IS NOT NULL)
   ),
 
-  constraint chk_cases_closed_fields check (
+  CONSTRAINT chk_cases_closed_fields CHECK (
     (state <> 'closed')
-    or
-    (closed_at is not null and closure_reason is not null)
+    OR
+    (closed_at IS NOT NULL AND closure_reason IS NOT NULL)
   )
 );
 
-create index if not exists idx_cases_domain_state
-  on cases (domain, state, priority desc, created_at desc);
+CREATE INDEX IF NOT EXISTS idx_cases_domain_state
+  ON cases (domain, state, priority DESC, created_at DESC);
 
-create index if not exists idx_cases_business
-  on cases (business_id, created_at desc);
+CREATE INDEX IF NOT EXISTS idx_cases_business
+  ON cases (business_id, created_at DESC);
 
-create index if not exists idx_cases_user
-  on cases (user_id, created_at desc);
+CREATE INDEX IF NOT EXISTS idx_cases_user
+  ON cases (user_id, created_at DESC);
 
-create index if not exists idx_cases_external_object
-  on cases (external_object_type, external_object_id);
+CREATE INDEX IF NOT EXISTS idx_cases_external_object
+  ON cases (external_object_type, external_object_id);
 
-create index if not exists idx_cases_origin_source
-  on cases (origin, source_system, source_reference);
+CREATE INDEX IF NOT EXISTS idx_cases_origin_source
+  ON cases (origin, source_system, source_reference);

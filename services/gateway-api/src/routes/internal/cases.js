@@ -6,6 +6,8 @@ const db = require('../../infrastructure/caseDb');
 
 const router = express.Router();
 
+const SYSTEM_ACTOR_UUID = '00000000-0000-0000-0000-000000000000';
+
 function uuid() {
   return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 }
@@ -28,6 +30,13 @@ function getRequestId(req) {
 
 function isAllowed(value, allowed) {
   return typeof value === 'string' && allowed.includes(value);
+}
+
+function normalizeNullableString(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 router.post('/', async (req, res, next) => {
@@ -53,31 +62,60 @@ router.post('/', async (req, res, next) => {
 
   try {
     if (!idempotencyKey) {
-      return res.status(400).json({ ok: false, error: { code: 'INVALID_CASE_REQUEST', message: 'Idempotency-Key is required' } });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_CASE_REQUEST', message: 'Idempotency-Key is required' }
+      });
     }
 
-    if (!isAllowed(domain, ['aml_risk', 'support', 'disputes', 'recovery', 'legal_hold'])) {
-      return res.status(400).json({ ok: false, error: { code: 'INVALID_CASE_REQUEST', message: 'domain is invalid' } });
+    if (!isAllowed(domain, ['aml_risk', 'support', 'disputes', 'recovery', 'legal_hold', 'operations'])) {
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_CASE_REQUEST', message: 'domain is invalid' }
+      });
     }
 
-    if (!isAllowed(origin, ['risk_signal', 'payment_rejection', 'fraud_detection', 'user_report', 'support_ticket', 'manual'])) {
-      return res.status(400).json({ ok: false, error: { code: 'INVALID_CASE_REQUEST', message: 'origin is invalid' } });
+    if (!isAllowed(origin, [
+      'risk_signal',
+      'payment_rejection',
+      'fraud_detection',
+      'user_report',
+      'support_ticket',
+      'manual',
+      'reconciliation_mismatch'
+    ])) {
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_CASE_REQUEST', message: 'origin is invalid' }
+      });
     }
 
     if (!isAllowed(priority, ['low', 'normal', 'high', 'urgent'])) {
-      return res.status(400).json({ ok: false, error: { code: 'INVALID_CASE_REQUEST', message: 'priority is invalid' } });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_CASE_REQUEST', message: 'priority is invalid' }
+      });
     }
 
     if (!isAllowed(severity, ['low', 'medium', 'high', 'critical'])) {
-      return res.status(400).json({ ok: false, error: { code: 'INVALID_CASE_REQUEST', message: 'severity is invalid' } });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_CASE_REQUEST', message: 'severity is invalid' }
+      });
     }
 
     if (typeof title !== 'string' || !title.trim()) {
-      return res.status(400).json({ ok: false, error: { code: 'INVALID_CASE_REQUEST', message: 'title is required' } });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_CASE_REQUEST', message: 'title is required' }
+      });
     }
 
     if (typeof summary !== 'string' || !summary.trim()) {
-      return res.status(400).json({ ok: false, error: { code: 'INVALID_CASE_REQUEST', message: 'summary is required' } });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_CASE_REQUEST', message: 'summary is required' }
+      });
     }
 
     const result = await db.withTransaction(async (client) => {
@@ -102,7 +140,8 @@ router.post('/', async (req, res, next) => {
         };
       }
 
-      if (dedupe_key) {
+      const normalizedDedupeKey = normalizeNullableString(dedupe_key);
+      if (normalizedDedupeKey) {
         const existing = await client.query(
           `
           SELECT id, case_number, domain, origin, state
@@ -110,7 +149,7 @@ router.post('/', async (req, res, next) => {
           WHERE dedupe_key = $1
           LIMIT 1
           `,
-          [dedupe_key]
+          [normalizedDedupeKey]
         );
 
         if (existing.rowCount > 0) {
@@ -166,16 +205,16 @@ router.post('/', async (req, res, next) => {
           summary.trim(),
           business_id,
           user_id,
-          source_system,
-          source_reference,
-          external_object_type,
-          external_object_id,
-          dedupe_key,
+          normalizeNullableString(source_system),
+          normalizeNullableString(source_reference),
+          normalizeNullableString(external_object_type),
+          normalizeNullableString(external_object_id),
+          normalizedDedupeKey,
           idempotencyKey,
           correlationId,
           requestId,
-          'system',
-          'system',
+          SYSTEM_ACTOR_UUID,
+          SYSTEM_ACTOR_UUID,
         ]
       );
 
@@ -208,8 +247,8 @@ router.post('/', async (req, res, next) => {
             origin,
             priority,
             severity,
-            external_object_type,
-            external_object_id,
+            external_object_type: normalizeNullableString(external_object_type),
+            external_object_id: normalizeNullableString(external_object_id),
           }),
           `${idempotencyKey}:timeline:case_created`,
           correlationId,
