@@ -1,0 +1,20 @@
+topic: card.auth.received.v1
+producer: gateway-api
+source_of_truth: cards_db.card_authorizations
+description: emitted after an authorization request is received and decisioned in Stage 5B
+payload:
+  authorizationId: uuid
+  cardId: uuid
+  spaceId: uuid
+  provider: string
+  providerAuthId: string|null
+  idempotencyKey: string
+  amount: integer_minor
+  currency: string
+  merchantName: string|null
+  merchantMcc: string|null
+  decision: approve|decline
+  declineReason: string|null
+  riskStatus: approved|declined|timeout|error|not_requested
+  availableBalanceSnapshot: integer_minor|null
+  occurredAt: iso8601

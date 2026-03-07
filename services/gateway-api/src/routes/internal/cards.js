@@ -2,6 +2,8 @@
 
 const express = require('express');
 const cardsRepo = require('../../repos/cards/cardsRepo');
+const cardsAuthorizationWebhookRouter = require('./cardsAuthorizationWebhook');
+const cardsAuthDecisionRouter = require('./cardsAuthDecision');
 
 const router = express.Router();
 
@@ -249,5 +251,9 @@ router.post('/:id/unfreeze', async (req, res) => {
     return handleError(res, err);
   }
 });
+
+// Stage 5B additive routes
+router.use('/', cardsAuthorizationWebhookRouter);
+router.use('/', cardsAuthDecisionRouter);
 
 module.exports = router;

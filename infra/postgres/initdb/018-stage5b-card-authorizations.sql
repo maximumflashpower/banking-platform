@@ -1,0 +1,2 @@
+\connect cards_db;
+\i /docker-entrypoint-initdb.d/cards-db/card_authorizations.sql
