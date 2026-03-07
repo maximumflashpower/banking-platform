@@ -1,82 +1,112 @@
-const { financialDb } = require('../infrastructure/financialDb');
+const { pool } = require('../infrastructure/financialDb');
 
 async function runDailyReconciliation(runDate, statementRows) {
 
-    const run = await financialDb.one(`
-        INSERT INTO reconciliation_runs (run_date)
-        VALUES ($1)
-        RETURNING *
-    `, [runDate]);
+    const client = await pool.connect();
 
-    const runId = run.id;
+    try {
 
-    let matched = 0;
-    let missingLedger = 0;
-    let missingBank = 0;
-    let mismatch = 0;
+        await client.query('BEGIN');
 
-    for (const row of statementRows) {
+        const runResult = await client.query(
+            `
+            INSERT INTO reconciliation_runs (run_date)
+            VALUES ($1)
+            RETURNING id
+            `,
+            [runDate]
+        );
 
-        const ledgerTx = await financialDb.oneOrNone(`
-            SELECT *
-            FROM ledger_journal_entries
-            WHERE external_reference = $1
-        `, [row.reference]);
+        const runId = runResult.rows[0].id;
 
-        let state;
+        let matched = 0;
+        let missingLedger = 0;
+        let missingBank = 0;
+        let mismatch = 0;
 
-        if (!ledgerTx) {
-            state = 'missing_in_ledger';
-            missingLedger++;
-        } else if (Number(ledgerTx.amount) !== Number(row.amount)) {
-            state = 'amount_mismatch';
-            mismatch++;
-        } else {
-            state = 'matched';
-            matched++;
+        for (const row of statementRows) {
+
+            const ledgerResult = await client.query(
+                `
+                SELECT id
+                FROM ledger_journal_entries
+                WHERE id::text = $1
+                `,
+                [row.reference]
+            );
+
+            const ledgerTx = ledgerResult.rows[0];
+
+            let state;
+
+            if (!ledgerTx) {
+                state = 'missing_in_ledger';
+                missingLedger++;
+            } else {
+                state = 'matched';
+                matched++;
+            }
+
+            await client.query(
+                `
+                INSERT INTO reconciliation_items (
+                    reconciliation_run_id,
+                    external_reference,
+                    ledger_reference,
+                    bank_amount,
+                    ledger_amount,
+                    discrepancy_state
+                )
+                VALUES ($1,$2,$3,$4,$5,$6)
+                `,
+                [
+                    runId,
+                    row.reference,
+                    ledgerTx ? ledgerTx.id : null,
+                    row.amount,
+                    null,
+                    state
+                ]
+            );
         }
 
-        await financialDb.none(`
-            INSERT INTO reconciliation_items (
-                reconciliation_run_id,
-                external_reference,
-                ledger_reference,
-                bank_amount,
-                ledger_amount,
-                discrepancy_state
-            )
-            VALUES ($1,$2,$3,$4,$5,$6)
-        `, [
-            runId,
-            row.reference,
-            ledgerTx?.id,
-            row.amount,
-            ledgerTx?.amount,
-            state
-        ]);
+        const summary = {
+            total_items: statementRows.length,
+            matched,
+            missing_in_ledger: missingLedger,
+            missing_in_bank: missingBank,
+            amount_mismatch: mismatch
+        };
+
+        await client.query(
+            `
+            UPDATE reconciliation_runs
+            SET
+                status='completed',
+                completed_at=now(),
+                summary_json=$2
+            WHERE id=$1
+            `,
+            [runId, summary]
+        );
+
+        await client.query('COMMIT');
+
+        return {
+            run_id: runId,
+            summary
+        };
+
+    } catch (err) {
+
+        await client.query('ROLLBACK');
+        throw err;
+
+    } finally {
+
+        client.release();
+
     }
-
-    const summary = {
-        total_items: statementRows.length,
-        matched,
-        missing_in_ledger: missingLedger,
-        missing_in_bank: missingBank,
-        amount_mismatch: mismatch
-    };
-
-    await financialDb.none(`
-        UPDATE reconciliation_runs
-        SET
-            status='completed',
-            completed_at=now(),
-            summary_json=$2
-        WHERE id=$1
-    `, [runId, summary]);
-
-    return {
-        run_id: runId,
-        summary
-    };
 }
 
 module.exports = { runDailyReconciliation };

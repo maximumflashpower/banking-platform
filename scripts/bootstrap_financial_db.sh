@@ -64,8 +64,17 @@ run_sql() {
 }
 
 run_sql "$SQL_DIR/idempotency_keys.sql"
+run_sql "$SQL_DIR/ledger_accounts.sql"
+run_sql "$SQL_DIR/ledger_journal_entries.sql"
+run_sql "$SQL_DIR/ledger_postings.sql"
 run_sql "$SQL_DIR/payment_intents.sql"
 run_sql "$SQL_DIR/payment_intent_states.sql"
+run_sql "$SQL_DIR/payment_approvals.sql"
+run_sql "$SQL_DIR/rails_transfers_ach.sql"
+run_sql "$SQL_DIR/rails_webhook_events.sql"
+run_sql "$SQL_DIR/financial_outbox.sql"
+run_sql "$SQL_DIR/reconciliation_runs.sql"
+run_sql "$SQL_DIR/reconciliation_items.sql"
 run_sql "$SQL_DIR/020_stage2e_ops_inbox_freeze.sql"
 
 echo "[bootstrap] done ✅"

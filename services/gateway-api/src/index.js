@@ -2,9 +2,13 @@
 
 const express = require('express');
 
+// ---- Public routers ----
 const approvalsRouter = require('./routes/approvals');
 const paymentIntentsRouter = require('./routes/paymentIntents');
 const financialInboxRouter = require('./routes/financialInbox');
+const stepUpRouter = require('./routes/stepUp');
+
+// ---- Internal routers ----
 const businessesInternal = require('./routes/internal/businesses');
 const casesInternal = require('./routes/internal/cases');
 const caseAssignmentsInternal = require('./routes/internal/caseAssignments');
@@ -13,15 +17,16 @@ const caseEvidenceInternal = require('./routes/internal/caseEvidence');
 const stepUpStartInternal = require('./routes/internal/stepUpStart');
 const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit');
 const paymentsAchWebhookInternal = require('./routes/internal/paymentsAchWebhook');
-const stepUpRouter = require('./routes/stepUp');
+
+// Stage 4C
 const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily');
 
 const app = express();
 
-// Trust proxy (útil en docker/k8s / reverse proxies)
+// ---- Trust proxy (docker / k8s / nginx) ----
 app.set('trust proxy', true);
 
-// Body parsing
+// ---- Body parsing ----
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
@@ -29,24 +34,35 @@ app.use(express.json({
   },
 }));
 
-// ---- Internal routes ----
+// =============================
+// INTERNAL API
+// =============================
+
 app.use('/internal/v1/businesses', businessesInternal);
 app.use('/internal/v1/security', stepUpStartInternal);
+
 app.use('/internal/v1/cases', casesInternal);
 app.use('/internal/v1/cases', caseAssignmentsInternal);
 app.use('/internal/v1/cases', caseStateInternal);
 app.use('/internal/v1/cases', caseEvidenceInternal);
+
 app.use('/internal/v1/payments', paymentsAchSubmitInternal);
 app.use('/internal/v1/payments', paymentsAchWebhookInternal);
+
+// Stage 4C
 app.use('/internal/v1', reconciliationRunDaily);
 
-// ---- Basic routes ----
-// Root (para evitar "Cannot GET /")
+
+// =============================
+// BASIC ROUTES
+// =============================
+
+// Root
 app.get('/', (_req, res) => {
   res.status(200).send('OK - gateway-api up');
 });
 
-// Healthcheck (útil para compose/k8s)
+// Healthcheck
 app.get('/health', (_req, res) => {
   res.status(200).json({
     ok: true,
@@ -55,33 +71,51 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ---- Public API routes ----
+
+// =============================
+// PUBLIC API
+// =============================
+
 app.use('/public/v1/finance', paymentIntentsRouter);
 app.use('/public/v1/finance', approvalsRouter);
 
-// Si tu gateway ya tiene inbox, lo dejamos
 app.use('/public/v1/financial-inbox', financialInboxRouter);
 app.use('/public/v1/auth', stepUpRouter);
 
-// ---- Not Found ----
+
+// =============================
+// NOT FOUND
+// =============================
+
 app.use((_req, res) => {
-  res.status(404).json({ error: 'not_found' });
+  res.status(404).json({
+    error: 'not_found',
+    path: _req.originalUrl,
+  });
 });
 
-// ---- Error handler ----
-/* eslint-disable no-unused-vars */
+
+// =============================
+// ERROR HANDLER
+// =============================
+
 app.use((err, _req, res, _next) => {
   console.error('[gateway-api] error:', err);
 
   if (res.headersSent) return;
 
   const status = Number(err?.status || err?.statusCode || 500);
+
   res.status(Number.isFinite(status) ? status : 500).json({
     error: 'internal_error',
     message: err?.message || 'unknown',
   });
 });
-/* eslint-enable no-unused-vars */
+
+
+// =============================
+// SERVER START
+// =============================
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
@@ -90,9 +124,15 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`[gateway-api] listening on http://${HOST}:${PORT}`);
 });
 
-// ---- Graceful shutdown (Docker-friendly) ----
+
+// =============================
+// GRACEFUL SHUTDOWN
+// =============================
+
 function shutdown(signal) {
+
   console.log(`[gateway-api] received ${signal}, shutting down...`);
+
   server.close(() => {
     console.log('[gateway-api] server closed');
     process.exit(0);
@@ -101,7 +141,7 @@ function shutdown(signal) {
   setTimeout(() => {
     console.error('[gateway-api] forced shutdown');
     process.exit(1);
-  }, 10_000).unref();
+  }, 10000).unref();
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));
