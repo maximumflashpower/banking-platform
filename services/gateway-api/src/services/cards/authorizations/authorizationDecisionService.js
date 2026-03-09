@@ -54,37 +54,6 @@ function toApiResponse(record, meta = {}) {
   };
 }
 
-function buildSyntheticDecline({
-  payload,
-  provider,
-  providerAuthId,
-  idempotencyKey,
-  declineReason,
-  spaceId = null,
-  riskStatus = 'not_requested',
-  availableBalanceSnapshot = null,
-}) {
-  return {
-    id: randomUUID(),
-    cardId: payload.cardId || null,
-    spaceId,
-    provider,
-    providerAuthId,
-    idempotencyKey,
-    amount: Number(payload.amount || 0),
-    currency: normalizeCurrency(payload.currency || 'USD'),
-    merchantName: payload.merchantName || null,
-    merchantMcc: payload.merchantMcc || null,
-    status: 'decisioned',
-    decision: 'decline',
-    declineReason,
-    riskStatus,
-    availableBalanceSnapshot,
-    createdAt: new Date().toISOString(),
-    decisionedAt: new Date().toISOString(),
-  };
-}
-
 async function insertOutbox(cardsDb, eventType, payload) {
   return cardsOutboxRepo.appendEvent(cardsDb, {
     aggregateType: 'card_authorization',
@@ -167,21 +136,65 @@ async function getCard(cardsDb, cardId) {
     : null;
 }
 
+async function persistDecision(cardsDb, input) {
+  const inserted = await cardAuthorizationsRepo.insertDecisionedAuthorization(cardsDb, input);
+
+  return inserted || (await cardAuthorizationsRepo.findByIdempotencyKey(cardsDb, input.idempotencyKey));
+}
+
+async function publishDecisionOutbox(cardsDb, persisted) {
+  const baseEventPayload = {
+    authorizationId: persisted.id,
+    cardId: persisted.cardId,
+    spaceId: persisted.spaceId,
+    provider: persisted.provider,
+    providerAuthId: persisted.providerAuthId,
+    idempotencyKey: persisted.idempotencyKey,
+    amount: persisted.amount,
+    currency: persisted.currency,
+    merchantName: persisted.merchantName,
+    merchantMcc: persisted.merchantMcc,
+    decision: persisted.decision,
+    declineReason: persisted.declineReason,
+    riskStatus: persisted.riskStatus,
+    availableBalanceSnapshot: persisted.availableBalanceSnapshot,
+    occurredAt: persisted.decisionedAt,
+  };
+
+  await insertOutbox(cardsDb, 'card.auth.received.v1', baseEventPayload);
+
+  if (persisted.decision === 'approve') {
+    await insertOutbox(cardsDb, 'card.auth.approved.v1', baseEventPayload);
+  } else {
+    await insertOutbox(cardsDb, 'card.auth.declined.v1', baseEventPayload);
+  }
+}
+
 async function decideAuthorization({ cardsDb, financialDb, payload }) {
   const provider = payload.provider || 'internal';
   const idempotencyKey = buildIdempotencyKey(payload);
   const providerAuthId = payload.providerAuthId || null;
 
   if (!payload.cardId || !payload.amount || !payload.currency) {
-    return toApiResponse(
-      buildSyntheticDecline({
-        payload,
-        provider,
-        providerAuthId,
-        idempotencyKey,
-        declineReason: 'INVALID_REQUEST',
-      })
-    );
+    const persisted = await persistDecision(cardsDb, {
+      cardId: payload.cardId || randomUUID(),
+      spaceId: payload.spaceId || randomUUID(),
+      provider,
+      providerAuthId,
+      idempotencyKey,
+      amount: Number(payload.amount || 0),
+      currency: normalizeCurrency(payload.currency || 'USD'),
+      merchantName: payload.merchantName || null,
+      merchantMcc: payload.merchantMcc || null,
+      decision: 'decline',
+      declineReason: 'INVALID_REQUEST',
+      riskStatus: 'not_requested',
+      availableBalanceSnapshot: null,
+      requestPayload: payload,
+    });
+
+    await publishDecisionOutbox(cardsDb, persisted);
+    return toApiResponse(persisted);
   }
 
   const existingByKey = await cardAuthorizationsRepo.findByIdempotencyKey(cardsDb, idempotencyKey);
@@ -226,31 +239,49 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
   const card = await getCard(cardsDb, payload.cardId);
 
   if (!card) {
-    return toApiResponse(
-      buildSyntheticDecline({
-        payload,
-        provider,
-        providerAuthId,
-        idempotencyKey,
-        declineReason: 'CARD_NOT_FOUND',
-        spaceId: payload.spaceId || null,
-      })
-    );
+    const persisted = await persistDecision(cardsDb, {
+      cardId: payload.cardId,
+      spaceId: payload.spaceId || randomUUID(),
+      provider,
+      providerAuthId,
+      idempotencyKey,
+      amount: Number(payload.amount),
+      currency: normalizeCurrency(payload.currency),
+      merchantName: payload.merchantName || null,
+      merchantMcc: payload.merchantMcc || null,
+      decision: 'decline',
+      declineReason: 'CARD_NOT_FOUND',
+      riskStatus: 'not_requested',
+      availableBalanceSnapshot: null,
+      requestPayload: payload,
+    });
+
+    await publishDecisionOutbox(cardsDb, persisted);
+    return toApiResponse(persisted);
   }
 
   const spaceId = card.spaceId || payload.spaceId || null;
 
   if (!spaceId) {
-    return toApiResponse(
-      buildSyntheticDecline({
-        payload,
-        provider,
-        providerAuthId,
-        idempotencyKey,
-        declineReason: 'SPACE_CONTEXT_MISSING',
-        spaceId: null,
-      })
-    );
+    const persisted = await persistDecision(cardsDb, {
+      cardId: payload.cardId,
+      spaceId: randomUUID(),
+      provider,
+      providerAuthId,
+      idempotencyKey,
+      amount: Number(payload.amount),
+      currency: normalizeCurrency(payload.currency),
+      merchantName: payload.merchantName || null,
+      merchantMcc: payload.merchantMcc || null,
+      decision: 'decline',
+      declineReason: 'SPACE_CONTEXT_MISSING',
+      riskStatus: 'not_requested',
+      availableBalanceSnapshot: null,
+      requestPayload: payload,
+    });
+
+    await publishDecisionOutbox(cardsDb, persisted);
+    return toApiResponse(persisted);
   }
 
   let decision = 'approve';
@@ -308,7 +339,7 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
     }
   }
 
-  const inserted = await cardAuthorizationsRepo.insertDecisionedAuthorization(cardsDb, {
+  const persisted = await persistDecision(cardsDb, {
     cardId: payload.cardId,
     spaceId,
     provider,
@@ -325,34 +356,7 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
     requestPayload: payload,
   });
 
-  const persisted =
-    inserted || (await cardAuthorizationsRepo.findByIdempotencyKey(cardsDb, idempotencyKey));
-
-  const baseEventPayload = {
-    authorizationId: persisted.id,
-    cardId: persisted.cardId,
-    spaceId: persisted.spaceId,
-    provider: persisted.provider,
-    providerAuthId: persisted.providerAuthId,
-    idempotencyKey: persisted.idempotencyKey,
-    amount: persisted.amount,
-    currency: persisted.currency,
-    merchantName: persisted.merchantName,
-    merchantMcc: persisted.merchantMcc,
-    decision: persisted.decision,
-    declineReason: persisted.declineReason,
-    riskStatus: persisted.riskStatus,
-    availableBalanceSnapshot: persisted.availableBalanceSnapshot,
-    occurredAt: persisted.decisionedAt,
-  };
-
-  await insertOutbox(cardsDb, 'card.auth.received.v1', baseEventPayload);
-
-  if (persisted.decision === 'approve') {
-    await insertOutbox(cardsDb, 'card.auth.approved.v1', baseEventPayload);
-  } else {
-    await insertOutbox(cardsDb, 'card.auth.declined.v1', baseEventPayload);
-  }
+  await publishDecisionOutbox(cardsDb, persisted);
 
   return toApiResponse(persisted);
 }

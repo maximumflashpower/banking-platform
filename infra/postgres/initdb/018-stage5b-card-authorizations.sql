@@ -1,2 +1,2 @@
-\connect cards_db;
-\i /docker-entrypoint-initdb.d/cards-db/card_authorizations.sql
+\c cards_db;
+\i /seed/cards-db/card_authorizations.sql
