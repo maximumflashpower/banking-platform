@@ -17,6 +17,9 @@ services:
       CASE_DATABASE_URL: postgres://app:app@db:5432/case_db
       CARDS_DATABASE_URL: postgres://app:app@db:5432/cards_db
 
+      # Cards DB (stage 5A)
+      CARDS_DATABASE_URL: postgres://app:app@db:5432/cards_db
+
     volumes:
       - .:/app
       - /app/node_modules
