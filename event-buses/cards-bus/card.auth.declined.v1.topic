@@ -1,0 +1,20 @@
+topic: card.auth.declined.v1
+producer: gateway-api
+source_of_truth: cards_db.card_authorizations
+description: emitted when Stage 5B authorization decision is decline
+payload:
+  authorizationId: uuid
+  cardId: uuid
+  spaceId: uuid
+  provider: string
+  providerAuthId: string|null
+  idempotencyKey: string
+  amount: integer_minor
+  currency: string
+  merchantName: string|null
+  merchantMcc: string|null
+  decision: decline
+  declineReason: CARD_FROZEN|SPACE_FROZEN|INSUFFICIENT_AVAILABLE_BALANCE|RISK_UNAVAILABLE|RISK_DECLINED|CARD_NOT_FOUND|INVALID_REQUEST
+  riskStatus: approved|declined|timeout|error|not_requested
+  availableBalanceSnapshot: integer_minor|null
+  occurredAt: iso8601

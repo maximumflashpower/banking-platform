@@ -1,18 +1,48 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
-MILESTONE="${1:-}"
-[ -n "$MILESTONE" ] || { echo "Usage: $0 <milestone-tag>"; exit 1; }
-
+PROJECT_DIR="${PROJECT_DIR:-$HOME/projects/banking-platform}"
+BACKUP_ROOT="${BACKUP_ROOT:-$HOME/backups/banking-platform}"
+MILESTONES_DIR="$BACKUP_ROOT/milestones"
 DATE="$(date +%F)"
-ROOT="$HOME/projects"
-REPO="banking-platform"
-OUTDIR="$HOME/backups/banking-platform/milestones"
 
-mkdir -p "$OUTDIR"
+if [ $# -lt 1 ]; then
+  echo "usage: $0 <milestone_name>"
+  exit 1
+fi
 
-# backup working tree actual
-tar -czf "$OUTDIR/${MILESTONE}_${DATE}.tar.gz" -C "$ROOT" "$REPO"
+MILESTONE_NAME="$1"
+ARCHIVE_NAME="${MILESTONE_NAME}_${DATE}.tar.gz"
+ARCHIVE_PATH="$MILESTONES_DIR/$ARCHIVE_NAME"
 
-echo "OK: $OUTDIR/${MILESTONE}_${DATE}.tar.gz"
-ls -lh "$OUTDIR/${MILESTONE}_${DATE}.tar.gz"
+log() {
+  echo "[backup_milestone] $*"
+}
+
+die() {
+  echo "[backup_milestone][error] $*" >&2
+  exit 1
+}
+
+[ -d "$PROJECT_DIR" ] || die "project directory not found: $PROJECT_DIR"
+
+mkdir -p "$MILESTONES_DIR"
+
+log "project dir: $PROJECT_DIR"
+log "milestones dir: $MILESTONES_DIR"
+log "creating archive: $ARCHIVE_PATH"
+
+tar \
+  --exclude='.git' \
+  --exclude='node_modules' \
+  --exclude='dist' \
+  --exclude='build' \
+  --exclude='coverage' \
+  --exclude='.DS_Store' \
+  -czf "$ARCHIVE_PATH" \
+  -C "$(dirname "$PROJECT_DIR")" \
+  "$(basename "$PROJECT_DIR")" \
+  || die "failed to create milestone archive"
+
+log "milestone backup created successfully"
+log "archive: $ARCHIVE_PATH"

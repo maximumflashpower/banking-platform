@@ -9,20 +9,13 @@ services:
       SERVICE_NAME: gateway-api
       PORT: 3000
 
-      # kill switch stage 4A
       ACH_RAIL_ENABLED: "true"
 
-      # Social DB (chat)
       DATABASE_URL: postgres://app:app@db:5432/social
-
-      # Identity DB (users/sessions)
       IDENTITY_DATABASE_URL: postgres://app:app@db:5432/identity
-
-      # Financial DB (ledger core / payments)
       FINANCIAL_DATABASE_URL: postgres://app:app@db:5432/financial_db
-
-      # Case DB (stage 3d case management)
       CASE_DATABASE_URL: postgres://app:app@db:5432/case_db
+      CARDS_DATABASE_URL: postgres://app:app@db:5432/cards_db
 
       # Cards DB (stage 5A)
       CARDS_DATABASE_URL: postgres://app:app@db:5432/cards_db
@@ -31,9 +24,17 @@ services:
       - .:/app
       - /app/node_modules
       - /app/services/gateway-api/node_modules
+
     depends_on:
-      - db
-    command: ["sh", "-lc", "until nc -z db 5432; do echo waiting for db; sleep 1; done; node services/gateway-api/src/index.js"]
+      db:
+        condition: service_healthy
+
+    command:
+      [
+        "sh",
+        "-lc",
+        "until nc -z db 5432; do echo waiting for db; sleep 1; done; node services/gateway-api/src/index.js"
+      ]
 
   db:
     image: postgres:16-alpine
@@ -47,6 +48,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+      - ./datastores/cards-db:/seed/cards-db:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d social"]
       interval: 5s
