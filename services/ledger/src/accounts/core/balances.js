@@ -1,48 +1,52 @@
-"use strict";
+'use strict';
 
-const { pool } = require("../../infrastructure/financialDb");
-const { toUuid } = require("../../shared/toUuid");
+const financialDb = require('../../infrastructure/financialDb');
 
-async function getBalances({ spaceId, currency }) {
-  // Asegurarse de que `spaceId` esté convertido a UUID
-  const spaceUuid = toUuid(spaceId); 
-  const normalizedCurrency = String(currency || "").trim().toUpperCase();
+async function getBalances({ accountId, currency }) {
+  const normalizedCurrency = String(currency || 'USD').trim().toUpperCase();
 
-  // Validación de los parámetros
-  if (!spaceUuid || !normalizedCurrency) {
-    throw new Error("Invalid spaceId or currency");
-  }
-
-  // Consulta SQL para obtener los balances
-  const r = await pool.query(
+  const postingsResult = await financialDb.query(
     `
-    SELECT
-      a.id AS account_id,
-      a.code,
-      a.name,
-      COALESCE(SUM(CASE WHEN p.direction = 'DEBIT' THEN p.amount_minor ELSE 0 END), 0)
-      - COALESCE(SUM(CASE WHEN p.direction = 'CREDIT' THEN p.amount_minor ELSE 0 END), 0)
-      AS balance_minor
-    FROM ledger_accounts a
-    LEFT JOIN ledger_postings p
-      ON p.account_id = a.id
-     AND p.space_id = a.space_id
-     AND p.currency = $2
-    WHERE a.space_id = $1
-      AND a.currency = $2
-    GROUP BY a.id, a.code, a.name
-    ORDER BY a.code ASC
+      SELECT
+        COALESCE(SUM(
+          CASE
+            WHEN direction = 'DEBIT' THEN amount_minor
+            WHEN direction = 'CREDIT' THEN -amount_minor
+            ELSE 0
+          END
+        ), 0) AS current_balance
+      FROM ledger_postings
+      WHERE account_id = $1
+        AND currency = $2
     `,
-    [spaceUuid, normalizedCurrency] // Usamos el UUID y la moneda normalizada
+    [accountId, normalizedCurrency]
   );
 
-  // Mapear y retornar los resultados de la consulta
-  return r.rows.map((x) => ({
-    account_id: x.account_id,
-    code: x.code,
-    name: x.name,
-    balance_minor: Number(x.balance_minor), // Convertir balance_minor a un número
-  }));
+  const holdsResult = await financialDb.query(
+    `
+      SELECT COALESCE(SUM(amount), 0) AS held_balance
+      FROM ledger_holds
+      WHERE account_id = $1
+        AND currency = $2
+        AND status = 'active'
+        AND released_at IS NULL
+    `,
+    [accountId, normalizedCurrency]
+  );
+
+  const currentBalance = Number(postingsResult.rows[0]?.current_balance || 0);
+  const heldBalance = Number(holdsResult.rows[0]?.held_balance || 0);
+  const availableBalance = currentBalance - heldBalance;
+
+  return {
+    accountId,
+    currency: normalizedCurrency,
+    currentBalance,
+    heldBalance,
+    availableBalance,
+  };
 }
 
-module.exports = { getBalances };
+module.exports = {
+  getBalances,
+};

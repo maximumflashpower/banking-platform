@@ -1,7 +1,10 @@
+'use strict';
+
 const { randomUUID } = require('crypto');
 
 function mapRow(row) {
   if (!row) return null;
+
   return {
     id: row.id,
     cardId: row.card_id,
@@ -21,11 +24,28 @@ function mapRow(row) {
       row.available_balance_snapshot === null
         ? null
         : Number(row.available_balance_snapshot),
+    ledgerHoldId: row.ledger_hold_id || null,
+    ledgerHoldRef: row.ledger_hold_ref || null,
+    holdStatus: row.hold_status || null,
     requestPayload: row.request_payload,
     decisionedAt: row.decisioned_at,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
   };
+}
+
+async function findById(cardsDb, id) {
+  const result = await cardsDb.query(
+    `
+      SELECT *
+      FROM card_authorizations
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [id]
+  );
+
+  return mapRow(result.rows[0]);
 }
 
 async function findByIdempotencyKey(cardsDb, idempotencyKey) {
@@ -53,7 +73,7 @@ async function findByProviderAuthId(cardsDb, provider, providerAuthId) {
         AND provider_auth_id = $2
       LIMIT 1
     `,
-    [provider, providerAuthId]
+    [String(provider), String(providerAuthId)]
   );
 
   return mapRow(result.rows[0]);
@@ -80,12 +100,15 @@ async function insertDecisionedAuthorization(cardsDb, input) {
         decline_reason,
         risk_status,
         available_balance_snapshot,
+        ledger_hold_id,
+        ledger_hold_ref,
+        hold_status,
         request_payload,
         decisioned_at
       )
       VALUES (
         $1,  $2,  $3,  $4,  $5,  $6,  $7,  $8,  $9,  $10,
-        $11, $12, $13, $14, $15, $16, NOW()
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW()
       )
       ON CONFLICT (idempotency_key) DO NOTHING
       RETURNING *
@@ -94,11 +117,11 @@ async function insertDecisionedAuthorization(cardsDb, input) {
       id,
       input.cardId,
       input.spaceId,
-      input.provider,
+      String(input.provider),
       input.providerAuthId || null,
-      input.idempotencyKey,
-      input.amount,
-      input.currency,
+      String(input.idempotencyKey),
+      Number(input.amount),
+      String(input.currency).toUpperCase(),
       input.merchantName || null,
       input.merchantMcc || null,
       'decisioned',
@@ -106,15 +129,57 @@ async function insertDecisionedAuthorization(cardsDb, input) {
       input.declineReason || null,
       input.riskStatus || 'not_requested',
       input.availableBalanceSnapshot ?? null,
-      JSON.stringify(input.requestPayload || {})
+      input.ledgerHoldId || null,
+      input.ledgerHoldRef || null,
+      input.holdStatus || null,
+      JSON.stringify(input.requestPayload || {}),
     ]
   );
 
   return mapRow(result.rows[0]);
 }
 
+async function attachLedgerHold(cardsDb, input) {
+  const result = await cardsDb.query(
+    `
+      UPDATE card_authorizations
+      SET
+        ledger_hold_id = COALESCE(ledger_hold_id, $2),
+        ledger_hold_ref = COALESCE(ledger_hold_ref, $3),
+        hold_status = $4
+      WHERE id = $1
+      RETURNING *
+    `,
+    [
+      input.authorizationId,
+      input.ledgerHoldId,
+      input.ledgerHoldRef,
+      input.holdStatus || 'active',
+    ]
+  );
+
+  return mapRow(result.rows[0]);
+}
+
+async function markHoldReleased(cardsDb, input) {
+  const result = await cardsDb.query(
+    `
+      UPDATE card_authorizations
+      SET hold_status = 'released'
+      WHERE id = $1
+      RETURNING *
+    `,
+    [input.authorizationId]
+  );
+
+  return mapRow(result.rows[0]);
+}
+
 module.exports = {
+  findById,
   findByIdempotencyKey,
   findByProviderAuthId,
-  insertDecisionedAuthorization
+  insertDecisionedAuthorization,
+  attachLedgerHold,
+  markHoldReleased,
 };
