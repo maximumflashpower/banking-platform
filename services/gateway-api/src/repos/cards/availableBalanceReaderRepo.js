@@ -1,124 +1,97 @@
 'use strict';
 
-let cachedBalanceSource = null;
+async function getCashAccount(financialDb, spaceId, currency = 'USD') {
+  const result = await financialDb.query(
+    `
+      SELECT id, space_id, code, name, currency
+      FROM ledger_accounts
+      WHERE space_id = $1
+        AND code = 'CASH'
+        AND currency = $2
+      ORDER BY created_at ASC NULLS LAST, id ASC
+      LIMIT 1
+    `,
+    [spaceId, currency]
+  );
 
-async function detectBalanceSource(financialDb) {
-  if (cachedBalanceSource) return cachedBalanceSource;
-
-  const candidates = [
-    {
-      key: 'ledger_accounts.available_balance',
-      sql: `
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'ledger_accounts'
-          AND column_name = 'available_balance'
-        LIMIT 1
-      `,
-    },
-    {
-      key: 'ledger_accounts.current_balance',
-      sql: `
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'ledger_accounts'
-          AND column_name = 'current_balance'
-        LIMIT 1
-      `,
-    },
-    {
-      key: 'ledger_accounts.balance',
-      sql: `
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'ledger_accounts'
-          AND column_name = 'balance'
-        LIMIT 1
-      `,
-    },
-  ];
-
-  for (const candidate of candidates) {
-    const result = await financialDb.query(candidate.sql);
-    if (result.rows.length > 0) {
-      cachedBalanceSource = candidate.key;
-      return cachedBalanceSource;
-    }
-  }
-
-  cachedBalanceSource = 'none';
-  return cachedBalanceSource;
+  return result.rows[0] || null;
 }
 
-async function getAvailableBalance(financialDb, spaceId) {
+async function readPostedBalance(financialDb, accountId, currency = 'USD') {
+  const result = await financialDb.query(
+    `
+      SELECT
+        COALESCE(SUM(
+          CASE
+            WHEN direction = 'DEBIT' THEN amount_minor
+            WHEN direction = 'CREDIT' THEN -amount_minor
+            ELSE 0
+          END
+        ), 0) AS posted_balance
+      FROM ledger_postings
+      WHERE account_id = $1
+        AND currency = $2
+    `,
+    [accountId, currency]
+  );
+
+  return Number(result.rows[0]?.posted_balance || 0);
+}
+
+async function readHeldBalance(financialDb, accountId, currency = 'USD') {
+  const result = await financialDb.query(
+    `
+      SELECT COALESCE(SUM(amount), 0) AS held_balance
+      FROM ledger_holds
+      WHERE account_id = $1
+        AND currency = $2
+        AND status = 'active'
+    `,
+    [accountId, currency]
+  );
+
+  return Number(result.rows[0]?.held_balance || 0);
+}
+
+async function getAvailableBalance(financialDb, spaceId, currency = 'USD') {
   if (!spaceId) {
     return {
       spaceId: null,
+      accountId: null,
+      currency,
+      baseBalance: 0,
+      heldBalance: 0,
       availableBalance: 0,
       source: 'none',
     };
   }
 
-  const source = await detectBalanceSource(financialDb);
+  const cashAccount = await getCashAccount(financialDb, spaceId, currency);
 
-  if (source === 'ledger_accounts.available_balance') {
-    const result = await financialDb.query(
-      `
-        SELECT COALESCE(SUM(available_balance), 0) AS available_balance
-        FROM ledger_accounts
-        WHERE space_id = $1
-      `,
-      [spaceId]
-    );
-
+  if (!cashAccount) {
     return {
       spaceId,
-      availableBalance: Number(result.rows[0]?.available_balance || 0),
-      source,
+      accountId: null,
+      currency,
+      baseBalance: 0,
+      heldBalance: 0,
+      availableBalance: 0,
+      source: 'ledger_postings+ledger_holds',
     };
   }
 
-  if (source === 'ledger_accounts.current_balance') {
-    const result = await financialDb.query(
-      `
-        SELECT COALESCE(SUM(current_balance), 0) AS available_balance
-        FROM ledger_accounts
-        WHERE space_id = $1
-      `,
-      [spaceId]
-    );
-
-    return {
-      spaceId,
-      availableBalance: Number(result.rows[0]?.available_balance || 0),
-      source,
-    };
-  }
-
-  if (source === 'ledger_accounts.balance') {
-    const result = await financialDb.query(
-      `
-        SELECT COALESCE(SUM(balance), 0) AS available_balance
-        FROM ledger_accounts
-        WHERE space_id = $1
-      `,
-      [spaceId]
-    );
-
-    return {
-      spaceId,
-      availableBalance: Number(result.rows[0]?.available_balance || 0),
-      source,
-    };
-  }
+  const baseBalance = await readPostedBalance(financialDb, cashAccount.id, currency);
+  const heldBalance = await readHeldBalance(financialDb, cashAccount.id, currency);
+  const availableBalance = Math.max(0, baseBalance - heldBalance);
 
   return {
     spaceId,
-    availableBalance: 0,
-    source: 'none',
+    accountId: cashAccount.id,
+    currency,
+    baseBalance,
+    heldBalance,
+    availableBalance,
+    source: 'ledger_postings+ledger_holds',
   };
 }
 

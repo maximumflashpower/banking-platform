@@ -23,8 +23,16 @@ const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily
 const reconciliationRunsInternal = require('./routes/internal/reconciliationRuns');
 const reconciliationActionsInternal = require('./routes/internal/reconciliationActions');
 
-// Stage 5A
+// Stage 5A / 5B / 5C
 const internalCardsRouter = require('./routes/internal/cards');
+const cardsAuthDecisionRouter = require('./routes/internal/cardsAuthDecision');
+const cardsAuthorizationWebhookRouter = require('./routes/internal/cardsAuthorizationWebhook');
+
+// Ledger domain HTTP adapters
+const ledgerCreateHoldRouter = require('./routes/internal/ledgerHoldsCreate');
+const ledgerReleaseHoldRouter = require('./routes/internal/ledgerHoldsRelease');
+const ledgerBalancesRouter = require('./routes/internal/ledgerAccountsBalance');
+const ledgerEnsureWalletRouter = require('./routes/internal/ledgerEnsureWallet');
 
 const app = express();
 
@@ -62,6 +70,16 @@ app.use('/internal/v1/reconciliation/actions', reconciliationActionsInternal);
 // Stage 5A
 app.use('/internal/v1/cards', internalCardsRouter);
 
+// Stage 5B
+app.use('/internal/v1/cards', cardsAuthDecisionRouter);
+app.use('/internal/v1/cards', cardsAuthorizationWebhookRouter);
+
+// Stage 5C - Ledger internal routes mounted in gateway-api
+app.use('/internal/v1/ledger', ledgerCreateHoldRouter);
+app.use('/internal/v1/ledger', ledgerReleaseHoldRouter);
+app.use('/internal/v1/ledger', ledgerBalancesRouter);
+app.use('/internal/v1/ledger', ledgerEnsureWalletRouter);
+
 // =============================
 // BASIC ROUTES
 // =============================
@@ -92,10 +110,10 @@ app.use('/public/v1/auth', stepUpRouter);
 // NOT FOUND
 // =============================
 
-app.use((_req, res) => {
+app.use((req, res) => {
   res.status(404).json({
     error: 'not_found',
-    path: _req.originalUrl,
+    path: req.originalUrl,
   });
 });
 

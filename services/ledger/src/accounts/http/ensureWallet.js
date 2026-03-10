@@ -1,54 +1,55 @@
-"use strict";
+'use strict';
 
-const { ensurePersonalWallet } = require("../core/ensureWallet");
+const express = require('express');
+const { ensurePersonalWallet } = require('../core/ensureWallet');
 
-function json(res, statusCode, body, headers = {}) {
-  const payload = JSON.stringify(body);
-  res.writeHead(statusCode, {
-    "content-type": "application/json; charset=utf-8",
-    "content-length": Buffer.byteLength(payload),
-    ...headers,
-  });
-  res.end(payload);
-}
+const router = express.Router();
 
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => (data += chunk));
-    req.on("end", () => {
-      if (!data) return resolve({});
-      try {
-        resolve(JSON.parse(data));
-      } catch {
-        reject(new Error("invalid_json"));
-      }
+router.post('/accounts/ensure-wallet', async (req, res) => {
+  try {
+    const spaceId =
+      req.body?.spaceId ||
+      req.query?.spaceId ||
+      null;
+
+    if (!spaceId) {
+      return res.status(400).json({
+        error: 'missing_space_id',
+      });
+    }
+
+    const currency = String(req.body?.currency || req.query?.currency || 'USD')
+      .trim()
+      .toUpperCase();
+
+    const accounts = await ensurePersonalWallet({
+      spaceId: String(spaceId),
+      currency,
     });
-    req.on("error", reject);
-  });
-}
 
-async function handleEnsureWallet(req, res) {
-  const spaceId = req.auth?.spaceId ? String(req.auth.spaceId) : "";
-  if (!spaceId) return json(res, 401, { ok: false, error: "unauthorized", message: "session required" });
+    return res.status(200).json({
+      ok: true,
+      spaceId: String(spaceId),
+      currency,
+      wallet: {
+        accounts,
+      },
+    });
+  } catch (error) {
+    const msg = String(error?.message || error);
 
-  let body = {};
-  try {
-    body = await readJson(req);
-  } catch {
-    return json(res, 400, { ok: false, error: "bad_request", message: "Invalid JSON" });
+    if (msg === 'currency_required') {
+      return res.status(400).json({
+        error: 'bad_request',
+        message: 'currency required',
+      });
+    }
+
+    return res.status(500).json({
+      error: 'internal_error',
+      message: msg,
+    });
   }
+});
 
-  const currency = body.currency ? String(body.currency).trim().toUpperCase() : "USD";
-
-  try {
-    const accounts = await ensurePersonalWallet({ spaceId, currency });
-    return json(res, 200, { ok: true, space_id: spaceId, currency, wallet: { accounts } });
-  } catch (e) {
-    const msg = String(e?.message || e);
-    if (msg === "currency_required") return json(res, 400, { ok: false, error: "bad_request", message: "currency required" });
-    return json(res, 500, { ok: false, error: "internal_error" });
-  }
-}
-
-module.exports = { handleEnsureWallet };
+module.exports = router;

@@ -1,0 +1,29 @@
+📌 Creando autorización final (hold)...
+✅ Hold creado: ledgerHoldRef=card_auth:46b5de90-8c27-4afa-9ead-7d0a858d5de5 ledgerHoldId=30b35e9c-0cf5-46c3-ac89-921781b37c3c
+📌 Balance con hold activo...
+{
+  "ok": true,
+  "accountId": "09e81c15-2b3c-48e4-846a-4a56c0d7983a",
+  "currency": "USD",
+  "currentBalance": 500000,
+  "heldBalance": 3000,
+  "availableBalance": 497000
+}
+📌 Liberando hold...
+{
+  "holdId": "30b35e9c-0cf5-46c3-ac89-921781b37c3c",
+  "holdRef": "card_auth:46b5de90-8c27-4afa-9ead-7d0a858d5de5",
+  "status": "released",
+  "idempotentReplay": false
+}
+📌 Balance final tras liberación...
+{
+  "ok": true,
+  "accountId": "09e81c15-2b3c-48e4-846a-4a56c0d7983a",
+  "currency": "USD",
+  "currentBalance": 500000,
+  "heldBalance": 1500,
+  "availableBalance": 498500
+}
+💾 Realizando backups de auditoría...
+🔹 Exportando ledger_holds -> ./backups_stage5c_final/ledger_holds_stage5c_2026-03-10_131428.sql

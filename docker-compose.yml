@@ -8,16 +8,14 @@ services:
       NODE_ENV: development
       SERVICE_NAME: gateway-api
       PORT: 3000
-
       ACH_RAIL_ENABLED: "true"
+      RISK_BYPASS_FOR_LOCAL: "true"
+      LEDGER_BASE_URL: "http://localhost:3000"
 
       DATABASE_URL: postgres://app:app@db:5432/social
       IDENTITY_DATABASE_URL: postgres://app:app@db:5432/identity
       FINANCIAL_DATABASE_URL: postgres://app:app@db:5432/financial_db
       CASE_DATABASE_URL: postgres://app:app@db:5432/case_db
-      CARDS_DATABASE_URL: postgres://app:app@db:5432/cards_db
-
-      # Cards DB (stage 5A)
       CARDS_DATABASE_URL: postgres://app:app@db:5432/cards_db
 
     volumes:
@@ -49,6 +47,9 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
       - ./datastores/cards-db:/seed/cards-db:ro
+      - ./datastores/financial-db:/seed/financial-db:ro
+      - ./datastores/identity-db:/seed/identity-db:ro
+      - ./datastores/case-db:/seed/case-db:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d social"]
       interval: 5s

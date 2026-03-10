@@ -1,43 +1,70 @@
-"use strict";
+'use strict';
 
-const { getBalances } = require("../core/balances");
+const express = require('express');
+const { getBalances } = require('../core/balances');
 
-function json(res, statusCode, body, headers = {}) {
-  const payload = JSON.stringify(body);
-  res.writeHead(statusCode, {
-    "content-type": "application/json; charset=utf-8",
-    "content-length": Buffer.byteLength(payload),
-    ...headers,
-  });
-  res.end(payload);
-}
+const router = express.Router();
 
-function nowIso() {
-  return new Date().toISOString();
-}
+router.get('/accounts/:id/balance', async (req, res) => {
+  try {
+    const accountId = String(req.params.id || '').trim();
+    const currency = String(req.query.currency || 'USD').trim().toUpperCase();
 
-async function handleGetBalances(req, res, url) {
-  const spaceId = req.auth?.spaceId ? String(req.auth.spaceId) : "";
-  if (!spaceId) return json(res, 401, { ok: false, error: "unauthorized", message: "session required" });
+    if (!accountId) {
+      return res.status(400).json({
+        error: 'missing_account_id',
+      });
+    }
 
-  // optional compatibility: ?space_id=... must match auth
-  const qSpace = url.searchParams.get("space_id");
-  if (qSpace && String(qSpace) !== spaceId) {
-    return json(res, 403, { ok: false, error: "forbidden", message: "space_id mismatch" });
+    const balances = await getBalances({
+      accountId,
+      currency,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      accountId,
+      currency,
+      asOf: new Date().toISOString(),
+      ...balances,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'failed_to_get_balance',
+      message: error?.message || 'unknown',
+    });
   }
+});
 
-  const currency = String(url.searchParams.get("currency") || "").trim().toUpperCase();
-  if (!currency) return json(res, 400, { ok: false, error: "bad_request", message: "currency query param required" });
+router.get('/spaces/:spaceId/balances', async (req, res) => {
+  try {
+    const spaceId = String(req.params.spaceId || '').trim();
+    const currency = String(req.query.currency || 'USD').trim().toUpperCase();
 
-  const balances = await getBalances({ spaceId, currency });
+    if (!spaceId) {
+      return res.status(400).json({
+        error: 'missing_space_id',
+      });
+    }
 
-  return json(res, 200, {
-    ok: true,
-    space_id: spaceId,
-    currency,
-    as_of: nowIso(),
-    balances,
-  });
-}
+    const balances = await getBalances({
+      spaceId,
+      currency,
+    });
 
-module.exports = { handleGetBalances };
+    return res.status(200).json({
+      ok: true,
+      spaceId,
+      currency,
+      asOf: new Date().toISOString(),
+      balances,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'failed_to_get_balances',
+      message: error?.message || 'unknown',
+    });
+  }
+});
+
+module.exports = router;

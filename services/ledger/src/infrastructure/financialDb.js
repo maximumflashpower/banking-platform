@@ -1,39 +1,44 @@
-"use strict";
+'use strict';
 
-const { Pool } = require("pg");
+const { Pool } = require('pg');
 
-const FIN_URL = process.env.FINANCIAL_DATABASE_URL;
-if (!FIN_URL) {
-  throw new Error("FINANCIAL_DATABASE_URL is required");
+const connectionString = process.env.FINANCIAL_DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('FINANCIAL_DATABASE_URL is required');
 }
 
 const pool = new Pool({
-  connectionString: FIN_URL,
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
+  connectionString,
+
+  max: process.env.DB_POOL_SIZE
+    ? Number(process.env.DB_POOL_SIZE)
+    : 10,
+
+  idleTimeoutMillis: process.env.DB_IDLE_TIMEOUT
+    ? Number(process.env.DB_IDLE_TIMEOUT)
+    : 30000,
+
+  connectionTimeoutMillis: process.env.DB_CONNECT_TIMEOUT
+    ? Number(process.env.DB_CONNECT_TIMEOUT)
+    : 2000,
 });
 
-async function withTx(fn) {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const out = await fn(client);
-    await client.query("COMMIT");
-    return out;
-  } catch (e) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-    throw e;
-  } finally {
-    client.release();
-  }
+async function query(text, params) {
+  return pool.query(text, params);
 }
 
-async function ping() {
-  const r = await pool.query("SELECT 1 AS ok");
-  return r.rows?.[0]?.ok === 1;
+async function connect() {
+  return pool.connect();
 }
 
-module.exports = { pool, withTx, ping };
+async function close() {
+  await pool.end();
+}
+
+module.exports = {
+  pool,
+  query,
+  connect,
+  close,
+};
