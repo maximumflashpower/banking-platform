@@ -183,3 +183,61 @@ module.exports = {
   attachLedgerHold,
   markHoldReleased,
 };
+
+async function updateStatus(cardsDb, { authorizationId, status }) {
+  const result = await cardsDb.query(
+    `
+      UPDATE card_authorizations
+      SET status = $2
+      WHERE id = $1
+      RETURNING *
+    `,
+    [authorizationId, status]
+  );
+
+  return mapRow(result.rows[0]);
+}
+
+async function markCaptured(cardsDb, input) {
+  const result = await cardsDb.query(
+    `
+      UPDATE card_authorizations
+      SET
+        status = 'captured',
+        hold_status = 'released'
+      WHERE id = $1
+      RETURNING *
+    `,
+    [input.authorizationId]
+  );
+
+  return mapRow(result.rows[0]);
+}
+
+async function markReversed(cardsDb, input) {
+  const result = await cardsDb.query(
+    `
+      UPDATE card_authorizations
+      SET
+        status = 'reversed',
+        hold_status = 'released'
+      WHERE id = $1
+      RETURNING *
+    `,
+    [input.authorizationId]
+  );
+
+  return mapRow(result.rows[0]);
+}
+
+module.exports = {
+  findById,
+  findByIdempotencyKey,
+  findByProviderAuthId,
+  insertDecisionedAuthorization,
+  attachLedgerHold,
+  markHoldReleased,
+  updateStatus,
+  markCaptured,
+  markReversed,
+};

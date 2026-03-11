@@ -63,71 +63,39 @@ async function fetchJson(url, options = {}) {
   }
 }
 
-async function createHold(payload) {
+async function commitCardSettlement(payload) {
   if (!payload?.spaceId) {
     throw new Error('space_id_required');
   }
 
-  if (!payload?.holdRef) {
-    throw new Error('hold_ref_required');
+  if (!payload?.idemKey) {
+    throw new Error('idempotency_key_required');
   }
 
-  if (!Number.isInteger(Number(payload?.amount)) || Number(payload.amount) < 0) {
-    throw new Error('amount_invalid');
-  }
-
-  if (!payload?.currency) {
-    throw new Error('currency_required');
+  if (!Array.isArray(payload?.postings) || payload.postings.length < 2) {
+    throw new Error('postings_invalid');
   }
 
   try {
-    return await fetchJson(buildUrl('/internal/v1/ledger/holds/create'), {
+    return await fetchJson(buildUrl('/internal/v1/ledger/postings/commit'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Idempotency-Key': payload.idemKey,
       },
       body: JSON.stringify({
         spaceId: payload.spaceId,
-        holdRef: payload.holdRef,
-        amount: Number(payload.amount),
-        currency: String(payload.currency).toUpperCase(),
-        reason: 'card_authorization',
-        metadata: {
-          authorizationId: payload.authorizationId || null,
-          provider: payload.provider || null,
-          providerAuthId: payload.providerAuthId || null,
-          cardId: payload.cardId || null,
-        },
+        idemKey: payload.idemKey,
+        memo: payload.memo || null,
+        effectiveAt: payload.effectiveAt || null,
+        postings: payload.postings,
       }),
     });
   } catch (error) {
     if (error.message.startsWith('internal_http_error:')) {
-      throw new Error(`ledger_hold_create_failed:${JSON.stringify(error.data || {})}`);
-    }
-
-    throw error;
-  }
-}
-
-async function releaseHold(payload) {
-  if (!payload?.holdRef) {
-    throw new Error('hold_ref_required');
-  }
-
-  try {
-    return await fetchJson(buildUrl('/internal/v1/ledger/holds/release'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        holdRef: payload.holdRef,
-        reason: payload.reason || 'manual_release',
-      }),
-    });
-  } catch (error) {
-    if (error.message.startsWith('internal_http_error:')) {
-      throw new Error(`ledger_hold_release_failed:${JSON.stringify(error.data || {})}`);
+      throw new Error(
+        `ledger_postings_commit_failed:${JSON.stringify(error.data || {})}`
+      );
     }
 
     throw error;
@@ -135,6 +103,5 @@ async function releaseHold(payload) {
 }
 
 module.exports = {
-  createHold,
-  releaseHold,
+  commitCardSettlement,
 };
