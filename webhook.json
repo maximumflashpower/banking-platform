@@ -1,0 +1,12 @@
+{
+  "provider": "sandbox-processor",
+  "provider_event_id": "evt-stage5f-test-004",
+  "event_type": "card.capture.received",
+  "occurred_at": "2026-03-11T22:49:13Z",
+  "data": {
+    "provider_capture_id": "cap-stage5f-test-004",
+    "authorization_id": "0a045099-2f2b-421a-b232-a40b4b0c6283",
+    "amount": 2500,
+    "currency": "USD"
+  }
+}

@@ -11,7 +11,7 @@
     "cards:webhook-processor": "node services/cards/src/settlements/runCardsWebhookProcessor.js"
   },
   "dependencies": {
-  "dotenv": "^17.3.1",
-  "pg": "^8.20.0"
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.5"
   }
 }
