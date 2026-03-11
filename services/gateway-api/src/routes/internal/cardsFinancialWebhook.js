@@ -1,17 +1,11 @@
 'use strict';
 
 const express = require('express');
+const { randomUUID } = require('crypto');
 const cardsDb = require('../../infrastructure/cardsDb');
-const authRepo = require('../../repos/cards/cardAuthorizationsRepo');
 const webhookRepo = require('../../repos/cards/cardsWebhookEventsRepo');
-const financialFlowsRepo = require('../../repos/cards/cardFinancialFlowsRepo');
-const ledgerHoldsClientRepo = require('../../repos/cards/ledgerHoldsClientRepo');
-const ledgerPostingsClientRepo = require('../../repos/cards/ledgerPostingsClientRepo');
 
 const router = express.Router();
-
-const CARDHOLDER_ACCOUNT_ID = '09e81c15-2b3c-48e4-846a-4a56c0d7983a';
-const SETTLEMENT_ACCOUNT_ID = '775fd388-ed9c-4cd9-a0fa-a660c587a727';
 
 function cleanString(v) {
   if (v === undefined || v === null) return null;
@@ -27,35 +21,122 @@ function normalizeAmount(v) {
 }
 
 function normalizePayload(body) {
-  return {
-    provider: cleanString(body.provider) || 'processor',
-    providerEventId: cleanString(body.providerEventId) || cleanString(body.provider_event_id),
-    providerAuthId: cleanString(body.providerAuthId) || cleanString(body.provider_auth_id),
-    type: cleanString(body.type || body.eventType || body.event_type)?.toLowerCase(),
-    amount: normalizeAmount(body.amount),
-    currency: cleanString(body.currency)?.toUpperCase() || 'USD',
-    occurredAt: cleanString(body.occurredAt || body.occurred_at),
-    rawPayload: body || {},
+  const provider = cleanString(body.provider) || 'processor';
+  const providerEventId =
+    cleanString(body.providerEventId) ||
+    cleanString(body.provider_event_id) ||
+    cleanString(body.eventId) ||
+    cleanString(body.event_id);
+
+  const providerAuthId =
+    cleanString(body.providerAuthId) ||
+    cleanString(body.provider_auth_id);
+
+  const providerCaptureId =
+    cleanString(body.providerCaptureId) ||
+    cleanString(body.provider_capture_id) ||
+    cleanString(body.data?.providerCaptureId) ||
+    cleanString(body.data?.provider_capture_id);
+
+  const providerReversalId =
+    cleanString(body.providerReversalId) ||
+    cleanString(body.provider_reversal_id) ||
+    cleanString(body.data?.providerReversalId) ||
+    cleanString(body.data?.provider_reversal_id);
+
+  const authorizationId =
+    cleanString(body.authorizationId) ||
+    cleanString(body.authorization_id) ||
+    cleanString(body.data?.authorizationId) ||
+    cleanString(body.data?.authorization_id);
+
+  const normalizedType = cleanString(
+    body.type || body.eventType || body.event_type
+  )?.toLowerCase();
+
+  const eventTypeMap = {
+    capture: 'card.capture.received',
+    reversal: 'card.reversal.received',
+    'card.capture.received': 'card.capture.received',
+    'card.reversal.received': 'card.reversal.received'
   };
+
+  const eventType = eventTypeMap[normalizedType] || normalizedType;
+
+  const amount =
+    normalizeAmount(body.amount) ??
+    normalizeAmount(body.data?.amount);
+
+  const currency =
+    cleanString(body.currency)?.toUpperCase() ||
+    cleanString(body.data?.currency)?.toUpperCase() ||
+    'USD';
+
+  const occurredAt =
+    cleanString(body.occurredAt || body.occurred_at) ||
+    cleanString(body.data?.occurredAt || body.data?.occurred_at) ||
+    null;
+
+  const orderingKey =
+    providerCaptureId ||
+    providerReversalId ||
+    providerAuthId ||
+    authorizationId ||
+    null;
+
+  const aggregateId =
+    authorizationId ||
+    providerAuthId ||
+    providerCaptureId ||
+    providerReversalId ||
+    null;
+
+  return {
+    provider,
+    providerEventId,
+    providerAuthId,
+    providerCaptureId,
+    providerReversalId,
+    authorizationId,
+    eventType,
+    amount,
+    currency,
+    occurredAt,
+    orderingKey,
+    aggregateId,
+    rawPayload: body || {}
+  };
+}
+
+function validateNormalizedPayload(payload) {
+  if (!payload.providerEventId) {
+    return 'provider_event_id_required';
+  }
+
+  if (!payload.eventType) {
+    return 'event_type_required';
+  }
+
+  if (
+    payload.eventType !== 'card.capture.received' &&
+    payload.eventType !== 'card.reversal.received'
+  ) {
+    return 'unsupported_event_type';
+  }
+
+  if (Number.isNaN(payload.amount)) {
+    return 'amount_invalid';
+  }
+
+  return null;
 }
 
 router.post('/webhooks/financial', async (req, res, next) => {
   const payload = normalizePayload(req.body);
+  const validationError = validateNormalizedPayload(payload);
 
-  if (!payload.providerEventId) {
-    return res.status(400).json({ error: 'provider_event_id_required' });
-  }
-
-  if (!payload.providerAuthId) {
-    return res.status(400).json({ error: 'provider_auth_id_required' });
-  }
-
-  if (!['capture', 'reversal'].includes(payload.type)) {
-    return res.status(400).json({ error: 'unsupported_event_type' });
-  }
-
-  if (Number.isNaN(payload.amount)) {
-    return res.status(400).json({ error: 'amount_invalid' });
+  if (validationError) {
+    return res.status(400).json({ error: validationError });
   }
 
   const cardsClient = await cardsDb.connect();
@@ -66,245 +147,77 @@ router.post('/webhooks/financial', async (req, res, next) => {
     const storedEvent = await webhookRepo.storeIncomingEvent(cardsClient, {
       provider: payload.provider,
       providerEventId: payload.providerEventId,
-      eventType: payload.type,
+      eventType: payload.eventType,
       payload: payload.rawPayload,
       correlationId: req.header('X-Correlation-Id') || null,
-      idempotencyKey: req.header('Idempotency-Key') || null,
+      idempotencyKey: req.header('Idempotency-Key') || null
     });
 
-    if (!storedEvent.inserted) {
-      await cardsClient.query('COMMIT');
-      return res.status(200).json({
-        ok: true,
-        duplicated: true,
-        providerEventId: payload.providerEventId,
-      });
-    }
+    const inboxId = randomUUID();
 
-    const authorization = await authRepo.findByProviderAuthId(
-      cardsClient,
-      payload.provider,
-      payload.providerAuthId
+    await cardsClient.query(
+      `
+      insert into public.card_event_inbox (
+        id,
+        provider,
+        provider_event_id,
+        event_type,
+        ordering_key,
+        aggregate_id,
+        payload,
+        occurred_at,
+        received_at,
+        process_status,
+        process_attempts
+      ) values (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7::jsonb,
+        $8,
+        now(),
+        'pending',
+        0
+      )
+      on conflict (provider, provider_event_id)
+      do nothing
+      `,
+      [
+        inboxId,
+        payload.provider,
+        payload.providerEventId,
+        payload.eventType,
+        payload.orderingKey,
+        payload.aggregateId,
+        JSON.stringify({
+          provider: payload.provider,
+          provider_event_id: payload.providerEventId,
+          provider_auth_id: payload.providerAuthId,
+          provider_capture_id: payload.providerCaptureId,
+          provider_reversal_id: payload.providerReversalId,
+          authorization_id: payload.authorizationId,
+          event_type: payload.eventType,
+          amount: payload.amount,
+          currency: payload.currency,
+          occurred_at: payload.occurredAt,
+          raw: payload.rawPayload
+        }),
+        payload.occurredAt
+      ]
     );
 
-    if (!authorization) {
-      await cardsClient.query('COMMIT');
-      return res.status(202).json({
-        ok: true,
-        deferred: true,
-        reason: 'authorization_not_found_yet',
-        providerAuthId: payload.providerAuthId,
-      });
-    }
+    await cardsClient.query('COMMIT');
 
-    const amount = payload.amount ?? Number(authorization.amount);
-    const currency = payload.currency || authorization.currency;
-
-    if (payload.type === 'capture') {
-      const existingCapture = await financialFlowsRepo.findCaptureByAuthorizationId(
-        cardsClient,
-        authorization.id
-      );
-
-      if (existingCapture) {
-        await cardsClient.query('COMMIT');
-        return res.status(200).json({
-          ok: true,
-          duplicated: true,
-          authorizationId: authorization.id,
-          flow: 'capture',
-        });
-      }
-
-      const existingReversal = await financialFlowsRepo.findReversalByAuthorizationId(
-        cardsClient,
-        authorization.id
-      );
-
-      if (existingReversal) {
-        await cardsClient.query('COMMIT');
-        return res.status(409).json({
-          error: 'capture_not_allowed_after_reversal_in_first_cut',
-          authorizationId: authorization.id,
-        });
-      }
-
-      await cardsClient.query('COMMIT');
-
-      let holdRelease = null;
-      if (authorization.ledgerHoldRef) {
-        holdRelease = await ledgerHoldsClientRepo.releaseHold({
-          holdRef: authorization.ledgerHoldRef,
-          reason: 'card_capture_total',
-        });
-      }
-
-      const settlementIdemKey = `card-capture:${authorization.id}:${payload.providerEventId}`;
-
-      const postings = [
-        {
-          account_id: CARDHOLDER_ACCOUNT_ID,
-          direction: 'CREDIT',
-          amount_minor: amount,
-          currency,
-        },
-        {
-          account_id: SETTLEMENT_ACCOUNT_ID,
-          direction: 'DEBIT',
-          amount_minor: amount,
-          currency,
-        },
-      ];
-
-      const ledgerResult = await ledgerPostingsClientRepo.commitCardSettlement({
-        spaceId: authorization.spaceId,
-        idemKey: settlementIdemKey,
-        memo: `card capture total ${authorization.id}`,
-        effectiveAt: payload.occurredAt,
-        postings,
-      });
-
-      await cardsClient.query('BEGIN');
-
-      const captureAgain = await financialFlowsRepo.findCaptureByAuthorizationId(
-        cardsClient,
-        authorization.id
-      );
-
-      if (captureAgain) {
-        await cardsClient.query('COMMIT');
-        return res.status(200).json({
-          ok: true,
-          duplicated: true,
-          authorizationId: authorization.id,
-          flow: 'capture',
-        });
-      }
-
-      const capture = await financialFlowsRepo.insertCapture(cardsClient, {
-        authorizationId: authorization.id,
-        provider: payload.provider,
-        providerEventId: payload.providerEventId,
-        providerAuthId: payload.providerAuthId,
-        amount,
-        currency,
-        ledgerJournalEntryId: ledgerResult.journal_entry_id,
-        rawPayload: payload.rawPayload,
-        capturedAt: payload.occurredAt,
-      });
-
-      await financialFlowsRepo.insertSettlement(cardsClient, {
-        authorizationId: authorization.id,
-        captureId: capture.id,
-        provider: payload.provider,
-        providerEventId: `${payload.providerEventId}:settlement`,
-        providerAuthId: payload.providerAuthId,
-        amount,
-        currency,
-        rawPayload: payload.rawPayload,
-        settledAt: payload.occurredAt,
-      });
-
-      await authRepo.markCaptured(cardsClient, {
-        authorizationId: authorization.id,
-      });
-
-      await cardsClient.query('COMMIT');
-
-      return res.status(200).json({
-        ok: true,
-        flow: 'capture',
-        authorizationId: authorization.id,
-        captureId: capture.id,
-        holdRelease,
-        ledgerResult,
-      });
-    }
-
-    if (payload.type === 'reversal') {
-      const existingReversal = await financialFlowsRepo.findReversalByAuthorizationId(
-        cardsClient,
-        authorization.id
-      );
-
-      if (existingReversal) {
-        await cardsClient.query('COMMIT');
-        return res.status(200).json({
-          ok: true,
-          duplicated: true,
-          authorizationId: authorization.id,
-          flow: 'reversal',
-        });
-      }
-
-      const existingCapture = await financialFlowsRepo.findCaptureByAuthorizationId(
-        cardsClient,
-        authorization.id
-      );
-
-      if (existingCapture) {
-        await cardsClient.query('COMMIT');
-        return res.status(409).json({
-          error: 'reversal_not_allowed_after_capture_in_first_cut',
-          authorizationId: authorization.id,
-        });
-      }
-
-      await cardsClient.query('COMMIT');
-
-      let holdRelease = null;
-      if (authorization.ledgerHoldRef) {
-        holdRelease = await ledgerHoldsClientRepo.releaseHold({
-          holdRef: authorization.ledgerHoldRef,
-          reason: 'card_auth_reversal',
-        });
-      }
-
-      await cardsClient.query('BEGIN');
-
-      const reversalAgain = await financialFlowsRepo.findReversalByAuthorizationId(
-        cardsClient,
-        authorization.id
-      );
-
-      if (reversalAgain) {
-        await cardsClient.query('COMMIT');
-        return res.status(200).json({
-          ok: true,
-          duplicated: true,
-          authorizationId: authorization.id,
-          flow: 'reversal',
-        });
-      }
-
-      const reversal = await financialFlowsRepo.insertReversal(cardsClient, {
-        authorizationId: authorization.id,
-        provider: payload.provider,
-        providerEventId: payload.providerEventId,
-        providerAuthId: payload.providerAuthId,
-        amount,
-        currency,
-        rawPayload: payload.rawPayload,
-        reversedAt: payload.occurredAt,
-      });
-
-      await authRepo.markReversed(cardsClient, {
-        authorizationId: authorization.id,
-      });
-
-      await cardsClient.query('COMMIT');
-
-      return res.status(200).json({
-        ok: true,
-        flow: 'reversal',
-        authorizationId: authorization.id,
-        reversalId: reversal.id,
-        holdRelease,
-      });
-    }
-
-    await cardsClient.query('ROLLBACK');
-    return res.status(400).json({ error: 'unsupported_event_type' });
+    return res.status(202).json({
+      ok: true,
+      accepted: true,
+      duplicated: !storedEvent.inserted,
+      providerEventId: payload.providerEventId,
+      eventType: payload.eventType
+    });
   } catch (error) {
     try {
       await cardsClient.query('ROLLBACK');
