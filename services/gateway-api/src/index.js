@@ -7,6 +7,7 @@ const approvalsRouter = require('./routes/approvals');
 const paymentIntentsRouter = require('./routes/paymentIntents');
 const financialInboxRouter = require('./routes/financialInbox');
 const stepUpRouter = require('./routes/stepUp');
+const cardsDisputesRouter = require('./routes/cardsDisputes');
 
 // ---- Internal routers ----
 const businessesInternal = require('./routes/internal/businesses');
@@ -110,6 +111,7 @@ app.use('/public/v1/finance', approvalsRouter);
 
 app.use('/public/v1/financial-inbox', financialInboxRouter);
 app.use('/public/v1/auth', stepUpRouter);
+app.use('/public/v1/cards', cardsDisputesRouter);
 
 // =============================
 // NOT FOUND
