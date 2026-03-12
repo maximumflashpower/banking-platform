@@ -3,18 +3,26 @@
 const { randomUUID } = require('crypto');
 const express = require('express');
 
+const {
+  ensureManualReviewCase,
+  enqueueCaseCreatedEvent
+} = require('../../repos/cases/amlRiskCasesRepo');
+
 const router = express.Router();
 
 const ALLOWED_ACTION_TYPES = new Set([
   'block_tx',
-  'freeze_space'
+  'freeze_space',
+  'manual_review'
 ]);
 
 const ALLOWED_TARGET_TYPES = new Set([
   'payment_intent',
   'transaction',
   'space',
-  'card'
+  'card',
+  'business',
+  'user'
 ]);
 
 function normalizeString(value) {
@@ -48,17 +56,25 @@ router.post('/actions/apply', async (req, res, next) => {
     const paymentIntentId = normalizeString(req.body?.paymentIntentId || req.body?.payment_intent_id);
     const spaceId = normalizeString(req.body?.spaceId || req.body?.space_id);
     const cardId = normalizeString(req.body?.cardId || req.body?.card_id);
+    const riskScoreRaw = req.body?.riskScore ?? req.body?.risk_score ?? req.body?.score ?? null;
+    const snapshot = req.body?.snapshot ?? null;
+
+    const riskScore =
+      riskScoreRaw === null || riskScoreRaw === undefined || riskScoreRaw === ''
+        ? null
+        : Number(riskScoreRaw);
 
     if (!ALLOWED_ACTION_TYPES.has(actionType)) {
-      throw buildValidationError('actionType must be one of: block_tx, freeze_space', {
+      throw buildValidationError('actionType must be one of: block_tx, freeze_space, manual_review', {
         field: 'actionType'
       });
     }
 
     if (!ALLOWED_TARGET_TYPES.has(targetType)) {
-      throw buildValidationError('targetType must be one of: payment_intent, transaction, space, card', {
-        field: 'targetType'
-      });
+      throw buildValidationError(
+        'targetType must be one of: payment_intent, transaction, space, card, business, user',
+        { field: 'targetType' }
+      );
     }
 
     if (!targetId) {
@@ -85,6 +101,19 @@ router.post('/actions/apply', async (req, res, next) => {
       });
     }
 
+    if (actionType === 'manual_review' && !['payment_intent', 'transaction', 'space', 'card', 'business', 'user'].includes(targetType)) {
+      throw buildValidationError(
+        'manual_review requires targetType=payment_intent, transaction, space, card, business or user',
+        { field: 'targetType' }
+      );
+    }
+
+    if (riskScore !== null && Number.isNaN(riskScore)) {
+      throw buildValidationError('riskScore must be numeric when provided', {
+        field: 'riskScore'
+      });
+    }
+
     const actionId = randomUUID();
 
     const auditRecord = {
@@ -100,16 +129,76 @@ router.post('/actions/apply', async (req, res, next) => {
         caseId: caseId || null,
         screeningId: screeningId || null,
         decisionId: decisionId || null,
-        paymentIntentId: paymentIntentId || null,
+        paymentIntentId: paymentIntentId || (targetType === 'payment_intent' ? targetId : null),
         spaceId: spaceId || (targetType === 'space' ? targetId : null),
         cardId: cardId || (targetType === 'card' ? targetId : null)
       },
+      riskScore,
       createdAt: now,
       regulatoryBoundary: {
         screening: 'separate',
-        enforcement: 'risk_actions_apply'
+        enforcement: 'risk_actions_apply',
+        amlWorkflow: actionType === 'manual_review' ? 'case_management' : 'not_started'
       }
     };
+
+    if (actionType === 'manual_review') {
+      const caseResult = await ensureManualReviewCase({
+        paymentIntentId: paymentIntentId || (targetType === 'payment_intent' ? targetId : null),
+        spaceId: spaceId || (targetType === 'space' ? targetId : null),
+        reasonCode: reason,
+        riskScore,
+        actor: {
+          type: 'risk_action',
+          id: requestedBy
+        },
+        snapshot,
+        targetType,
+        targetId,
+        metadata: {
+          opened_from_action: 'manual_review',
+          source_action_id: actionId,
+          correlation_id: correlationId,
+          decision_id: decisionId || null,
+          screening_id: screeningId || null,
+          requested_by: requestedBy,
+          case_id_reference: caseId || null
+        }
+      });
+
+      const amlCase = caseResult.row;
+
+      if (caseResult.created) {
+        await enqueueCaseCreatedEvent(amlCase);
+      }
+
+      console.log(
+        '[gateway-api][risk-actions-apply] manual_review accepted',
+        JSON.stringify({
+          ...auditRecord,
+          amlCaseId: amlCase.id
+        })
+      );
+
+      return res.status(202).json({
+        ok: true,
+        action: {
+          id: actionId,
+          status: 'accepted',
+          actionType,
+          targetType,
+          targetId,
+          requestedAt: now
+        },
+        aml_case: {
+          id: amlCase.id,
+          status: amlCase.status,
+          severity: amlCase.severity,
+          created: caseResult.created
+        },
+        audit: auditRecord
+      });
+    }
 
     console.log('[gateway-api][risk-actions-apply] action accepted', JSON.stringify(auditRecord));
 
