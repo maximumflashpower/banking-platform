@@ -53,6 +53,7 @@ const stepUpStartInternal = require('./routes/internal/stepUpStart');
 const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit');
 const paymentsAchWebhookInternal = require('./routes/internal/paymentsAchWebhook');
 const paymentIntentRiskGateInternal = require('./routes/internal/paymentIntentRiskGate');
+const sanctionsScreeningRoutes = require('./routes/internal/sanctionsScreening');
 
 // Stage 4C / 4E
 const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily');
@@ -130,6 +131,9 @@ app.use('/internal/v1/ledger', ledgerReleaseHoldRouter);
 app.use('/internal/v1/ledger', ledgerBalancesRouter);
 app.use('/internal/v1/ledger', ledgerEnsureWalletRouter);
 app.use('/internal/v1/ledger', ledgerPostingsCommitRouter);
+
+
+app.use(sanctionsScreeningRoutes);
 
 // =============================
 // BASIC ROUTES
