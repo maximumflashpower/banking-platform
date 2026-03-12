@@ -101,7 +101,10 @@ router.post('/actions/apply', async (req, res, next) => {
       });
     }
 
-    if (actionType === 'manual_review' && !['payment_intent', 'transaction', 'space', 'card', 'business', 'user'].includes(targetType)) {
+    if (
+      actionType === 'manual_review' &&
+      !['payment_intent', 'transaction', 'space', 'card', 'business', 'user'].includes(targetType)
+    ) {
       throw buildValidationError(
         'manual_review requires targetType=payment_intent, transaction, space, card, business or user',
         { field: 'targetType' }
