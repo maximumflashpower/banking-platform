@@ -1,103 +1,91 @@
 'use strict';
 
-function envBool(value) {
-  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+const DEFAULT_TIMEOUT_MS = 150;
+
+function withTimeout(promiseFactory, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const error = new Error(`risk_timeout_after_${timeoutMs}ms`);
+      error.code = 'RISK_TIMEOUT';
+      reject(error);
+    }, timeoutMs);
+
+    Promise.resolve()
+      .then(promiseFactory)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+function normalizeDecision(value) {
+  if (value === 'block_tx') return 'block_tx';
+  if (value === 'allow_with_monitoring') return 'allow_with_monitoring';
+  return 'allow';
+}
+
+function normalizeRiskResponse(payload = {}) {
+  return {
+    decision: normalizeDecision(payload.decision),
+    score: Number.isFinite(Number(payload.score)) ? Number(payload.score) : 0,
+    reason: payload.reason || 'stage6e_default_allow',
+  };
+}
+
+async function callRiskEndpoint(input, timeoutMs) {
+  const response = await withTimeout(
+    async () =>
+      fetch('http://localhost:3000/internal/v1/risk/decision/evaluate', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          flow: 'card_authorization',
+          card_id: input.cardId,
+          space_id: input.spaceId,
+          provider: input.provider,
+          provider_auth_id: input.providerAuthId,
+          amount: input.amount,
+          currency: input.currency,
+          merchant_name: input.merchantName,
+          merchant_mcc: input.merchantMcc,
+          idempotency_key: input.idempotencyKey,
+        }),
+      }),
+    timeoutMs
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`risk_http_${response.status}:${text}`);
+  }
+
+  const json = await response.json();
+  return normalizeRiskResponse(json.data || json);
 }
 
 async function evaluateRisk(input) {
-  const localBypassEnabled =
-    envBool(process.env.RISK_BYPASS_FOR_LOCAL) ||
-    envBool(process.env.CARDS_RISK_BYPASS_FOR_LOCAL);
-
-  const nodeEnv = String(process.env.NODE_ENV || 'development').toLowerCase();
-
-  if (localBypassEnabled) {
-    return {
-      ok: true,
-      status: 'approved',
-      source: 'local_bypass',
-      detail: {
-        nodeEnv,
-        flow: input?.flow || 'unknown',
-      },
-    };
-  }
-
-  const riskUrl =
-    process.env.RISK_DECISION_URL ||
-    process.env.RISK_INTERNAL_URL ||
-    null;
-
-  if (!riskUrl) {
-    return {
-      ok: false,
-      status: 'timeout',
-      source: 'risk_unconfigured',
-    };
-  }
-
   try {
-    const controller = new AbortController();
-    const timeoutMs = Number(process.env.RISK_TIMEOUT_MS || 1500);
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-    const response = await fetch(riskUrl, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(input || {}),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      return {
-        ok: false,
-        status: 'timeout',
-        source: 'risk_http_error',
-        httpStatus: response.status,
-      };
-    }
-
-    const data = await response.json().catch(() => ({}));
-    const decision = String(data?.status || data?.decision || '').toLowerCase();
-
-    if (decision === 'approved' || decision === 'approve') {
-      return {
-        ok: true,
-        status: 'approved',
-        source: 'risk_service',
-        data,
-      };
-    }
-
-    if (decision === 'declined' || decision === 'decline') {
-      return {
-        ok: true,
-        status: 'declined',
-        source: 'risk_service',
-        data,
-      };
-    }
-
-    return {
-      ok: false,
-      status: 'timeout',
-      source: 'risk_invalid_payload',
-      data,
-    };
+    return await callRiskEndpoint(input, DEFAULT_TIMEOUT_MS);
   } catch (error) {
     return {
-      ok: false,
-      status: 'timeout',
-      source: 'risk_exception',
-      message: error?.message || 'unknown',
+      decision: 'allow_with_monitoring',
+      score: 0,
+      reason:
+        error && error.code === 'RISK_TIMEOUT'
+          ? 'risk_timeout_fallback'
+          : 'risk_error_fallback',
     };
   }
 }
 
 module.exports = {
   evaluateRisk,
+  DEFAULT_TIMEOUT_MS,
 };
