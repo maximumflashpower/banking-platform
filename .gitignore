@@ -2,35 +2,19 @@
 # OS artifacts
 # ------------------------
 *:Zone.Identifier
-<<<<<<< HEAD
 .DS_Store
 
 # ------------------------
 # Node / JS
 # ------------------------
-# macOS
-=======
->>>>>>> 42b376a (Stage 6B — Payment Intent Risk Gate)
-.DS_Store
-
-# ------------------------
-# Node / JS
-# ------------------------
-<<<<<<< HEAD
-
-# macOS
-.DS_Store
-
-# ------------------------
-# Node / JS
-=======
->>>>>>> 42b376a (Stage 6B — Payment Intent Risk Gate)
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# ------------------------
 # Build artifacts
+# ------------------------
 dist/
 build/
 coverage/
@@ -41,24 +25,6 @@ coverage/
 # ------------------------
 # Environment
 # ------------------------
-<<<<<<< HEAD
-.env
-.env.local
-.env.*.local
-
-# ------------------------
-# Backups / dumps
-# Build artifacts
-dist/
-build/
-coverage/
-.cache/
-.turbo/
-.next/
-# Environment
-
-=======
->>>>>>> 42b376a (Stage 6B — Payment Intent Risk Gate)
 .env
 .env.local
 .env.*.local
@@ -74,13 +40,6 @@ backups/
 # ------------------------
 # Local artifacts
 # ------------------------
-<<<<<<< HEAD
-
-# ------------------------
-# Local artifacts
-
-=======
->>>>>>> 42b376a (Stage 6B — Payment Intent Risk Gate)
 cookies.txt
 cookies2.txt
 .cleanup_quarantine/
@@ -92,18 +51,6 @@ docker-compose.override.yml
 
 # ------------------------
 # Logs
-<<<<<<< HEAD
-# ------------------------
-*.log
-
-# Fixtures explicitly kept
-!tests/
-!tests/fixtures/
-!tests/fixtures/webhook-stage5f-final.json
-docker-compose.override.yml
-# Misc
-=======
->>>>>>> 42b376a (Stage 6B — Payment Intent Risk Gate)
 # ------------------------
 *.log
 
