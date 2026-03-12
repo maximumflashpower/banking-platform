@@ -2,11 +2,12 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const db = require('../infrastructure/financialDb');
+const { pool } = require('../infrastructure/financialDb');
+const paymentIntentRiskGateService = require('../services/payments/paymentIntentRiskGateService');
+const paymentIntentRiskGateRepo = require('../repos/payments/paymentIntentRiskGateRepo');
 
 const router = express.Router();
 
-// Este scope debe ser estable (forma parte de la UNIQUE key junto a space_id + scope + idem_key)
 const IDEM_SCOPE = 'public.v1.finance.payment-intents.create';
 
 function getSpaceId(req) {
@@ -73,7 +74,7 @@ function approvalPolicyForSpace(_spaceId) {
     threshold_amount_cents: thresholdAmountCents,
     required_approvals: requiredApprovals,
     eligible_voters_count: eligibleVotersCount,
-    rejection_mode: rejectionMode,
+    rejection_mode: rejectionMode
   };
 }
 
@@ -82,21 +83,21 @@ async function insertIntentState(client, {
   state,
   correlationId,
   reasonCode = null,
-  reasonDetail = null,
+  reasonDetail = null
 }) {
   await client.query(
     `
-    INSERT INTO payment_intent_states (
-      id,
-      payment_intent_id,
-      state,
-      reason_code,
-      reason_detail,
-      correlation_id,
-      created_at,
-      updated_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, clock_timestamp(), clock_timestamp())
+      INSERT INTO payment_intent_states (
+        id,
+        payment_intent_id,
+        state,
+        reason_code,
+        reason_detail,
+        correlation_id,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, clock_timestamp(), clock_timestamp())
     `,
     [
       newUuid(),
@@ -104,71 +105,112 @@ async function insertIntentState(client, {
       state,
       reasonCode,
       reasonDetail,
-      correlationId,
+      correlationId
     ]
   );
+}
+
+function withRiskFields(baseResponse, riskGate) {
+  return {
+    ...baseResponse,
+    risk_gate_status: riskGate.risk_gate_status,
+    risk_decision_id: riskGate.decision_id,
+    risk_reason_code: riskGate.reason_code,
+    risk_score: riskGate.risk_score,
+    aml_risk_case_id: riskGate.aml_risk_case_id,
+    ops_notification_id: riskGate.ops_notification_id
+  };
+}
+
+async function hydrateRiskFieldsIfNeeded(responseJson) {
+  if (!responseJson || !responseJson.intent_id) {
+    return responseJson;
+  }
+
+  if (responseJson.risk_gate_status) {
+    return responseJson;
+  }
+
+  const projection = await paymentIntentRiskGateRepo.getPaymentIntentForRisk(responseJson.intent_id);
+
+  if (!projection) {
+    return responseJson;
+  }
+
+  return {
+    ...responseJson,
+    risk_gate_status: projection.risk_gate_status,
+    risk_decision_id: projection.risk_decision_id,
+    risk_reason_code: projection.risk_reason_code,
+    risk_score: projection.risk_score,
+    aml_risk_case_id: projection.aml_risk_case_id,
+    ops_notification_id: projection.ops_notification_id
+  };
 }
 
 router.post('/payment-intents', async (req, res, next) => {
   const idemKey = req.header('Idempotency-Key');
 
+  if (!isNonEmptyString(idemKey)) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Idempotency-Key header is required'
+    });
+  }
+
+  const spaceId = getSpaceId(req);
+  if (!spaceId) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'X-Space-Id header is required (idempotency is per space)'
+    });
+  }
+
+  const { payer_user_id, payee_user_id, amount_cents, currency } = req.body || {};
+
+  if (!isUuidLike(payer_user_id) || !isUuidLike(payee_user_id)) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'payer_user_id and payee_user_id are required (uuid strings)'
+    });
+  }
+
+  if (!isPositiveInt(amount_cents)) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'amount_cents must be a positive integer (minor units, e.g. cents)'
+    });
+  }
+
+  if (!isNonEmptyString(currency) || currency.trim().length !== 3) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'currency is required (3-letter code)'
+    });
+  }
+
+  const normalizedCurrency = currency.trim().toUpperCase();
+  const correlationId = getCorrelationId(req);
+
+  const requestHash = sha256Hex(
+    JSON.stringify({
+      payer_user_id,
+      payee_user_id,
+      amount_cents,
+      currency: normalizedCurrency,
+      risk_context: req.body?.risk_context || {}
+    })
+  );
+
+  const client = await pool.connect();
+
   try {
-    if (!isNonEmptyString(idemKey)) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'Idempotency-Key header is required',
-      });
-    }
-
-    const spaceId = getSpaceId(req);
-    if (!spaceId) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'X-Space-Id header is required (idempotency is per space)',
-      });
-    }
-
-    const { payer_user_id, payee_user_id, amount_cents, currency } = req.body || {};
-
-    if (!isUuidLike(payer_user_id) || !isUuidLike(payee_user_id)) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'payer_user_id and payee_user_id are required (uuid strings)',
-      });
-    }
-
-    if (!isPositiveInt(amount_cents)) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'amount_cents must be a positive integer (minor units, e.g. cents)',
-      });
-    }
-
-    if (!isNonEmptyString(currency) || currency.trim().length !== 3) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'currency is required (3-letter code)',
-      });
-    }
-
-    const normalizedCurrency = currency.trim().toUpperCase();
-    const correlationId = getCorrelationId(req);
-
-    const requestHash = sha256Hex(
-      JSON.stringify({
-        payer_user_id,
-        payee_user_id,
-        amount_cents,
-        currency: normalizedCurrency,
-      })
-    );
-
-    const existing = await db.query(
+    const existing = await client.query(
       `
-      SELECT request_hash, response_json
-      FROM idempotency_keys
-      WHERE space_id = $1 AND scope = $2 AND idem_key = $3
-      LIMIT 1
+        SELECT request_hash, response_json
+        FROM idempotency_keys
+        WHERE space_id = $1 AND scope = $2 AND idem_key = $3
+        LIMIT 1
       `,
       [spaceId, IDEM_SCOPE, idemKey]
     );
@@ -179,11 +221,12 @@ router.post('/payment-intents', async (req, res, next) => {
       if (row.request_hash !== requestHash) {
         return res.status(409).json({
           error: 'idempotency_key_conflict',
-          message: 'Idempotency-Key was already used with a different request payload',
+          message: 'Idempotency-Key was already used with a different request payload'
         });
       }
 
-      return res.status(200).json(row.response_json);
+      const hydrated = await hydrateRiskFieldsIfNeeded(row.response_json);
+      return res.status(200).json(hydrated);
     }
 
     const intentId = newUuid();
@@ -191,21 +234,21 @@ router.post('/payment-intents', async (req, res, next) => {
     const requiresApproval = amount_cents >= policy.threshold_amount_cents;
     const finalState = requiresApproval ? 'pending_approval' : 'queued';
 
-    await db.query('BEGIN');
+    await client.query('BEGIN');
 
-    await db.query(
+    await client.query(
       `
-      INSERT INTO payment_intents (
-        id,
-        space_id,
-        payer_user_id,
-        payee_user_id,
-        currency,
-        amount_cents,
-        idempotency_key,
-        correlation_id
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        INSERT INTO payment_intents (
+          id,
+          space_id,
+          payer_user_id,
+          payee_user_id,
+          currency,
+          amount_cents,
+          idempotency_key,
+          correlation_id
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       `,
       [
         intentId,
@@ -215,45 +258,45 @@ router.post('/payment-intents', async (req, res, next) => {
         normalizedCurrency,
         amount_cents,
         idemKey,
-        correlationId,
+        correlationId
       ]
     );
 
-    await insertIntentState(db, {
+    await insertIntentState(client, {
       paymentIntentId: intentId,
       state: 'created',
-      correlationId,
+      correlationId
     });
 
-    await insertIntentState(db, {
+    await insertIntentState(client, {
       paymentIntentId: intentId,
       state: 'validated',
-      correlationId,
+      correlationId
     });
 
     if (requiresApproval) {
-      await db.query(
+      await client.query(
         `
-        INSERT INTO payment_approvals (
-          id,
-          space_id,
-          business_id,
-          payment_intent_id,
-          status,
-          policy_version,
-          threshold_amount_cents,
-          required_approvals,
-          eligible_voters_count,
-          rejection_mode,
-          created_by_member_id,
-          metadata
-        )
-        VALUES (
-          $1,$2,$3,$4,
-          'pending',
-          $5,$6,$7,$8,$9,$10,$11::jsonb
-        )
-        ON CONFLICT (payment_intent_id) DO NOTHING
+          INSERT INTO payment_approvals (
+            id,
+            space_id,
+            business_id,
+            payment_intent_id,
+            status,
+            policy_version,
+            threshold_amount_cents,
+            required_approvals,
+            eligible_voters_count,
+            rejection_mode,
+            created_by_member_id,
+            metadata
+          )
+          VALUES (
+            $1,$2,$3,$4,
+            'pending',
+            $5,$6,$7,$8,$9,$10,$11::jsonb
+          )
+          ON CONFLICT (payment_intent_id) DO NOTHING
         `,
         [
           newUuid(),
@@ -269,25 +312,25 @@ router.post('/payment-intents', async (req, res, next) => {
           JSON.stringify({
             correlation_id: correlationId,
             policy_snapshot: policy,
-            stage: 'stage3c-payment-approvals',
-          }),
+            stage: 'stage3c-payment-approvals'
+          })
         ]
       );
 
-      await insertIntentState(db, {
+      await insertIntentState(client, {
         paymentIntentId: intentId,
         state: 'pending_approval',
-        correlationId,
+        correlationId
       });
     } else {
-      await insertIntentState(db, {
+      await insertIntentState(client, {
         paymentIntentId: intentId,
         state: 'queued',
-        correlationId,
+        correlationId
       });
     }
 
-    const responsePayload = {
+    const provisionalResponse = {
       ok: true,
       intent_id: intentId,
       state: finalState,
@@ -300,48 +343,60 @@ router.post('/payment-intents', async (req, res, next) => {
             required_approvals: policy.required_approvals,
             eligible_voters_count: policy.eligible_voters_count,
             rejection_mode: policy.rejection_mode,
-            policy_version: policy.policy_version,
+            policy_version: policy.policy_version
           }
         : {
-            required: false,
-          },
+            required: false
+          }
     };
 
-    await db.query(
+    await client.query(
       `
-      INSERT INTO idempotency_keys (space_id, scope, idem_key, request_hash, response_json)
-      VALUES ($1, $2, $3, $4, $5::jsonb)
-      ON CONFLICT (space_id, scope, idem_key) DO NOTHING
+        INSERT INTO idempotency_keys (space_id, scope, idem_key, request_hash, response_json)
+        VALUES ($1, $2, $3, $4, $5::jsonb)
       `,
-      [spaceId, IDEM_SCOPE, idemKey, requestHash, JSON.stringify(responsePayload)]
+      [spaceId, IDEM_SCOPE, idemKey, requestHash, JSON.stringify(provisionalResponse)]
     );
 
-    await db.query('COMMIT');
+    await client.query('COMMIT');
 
-    const saved = await db.query(
-      `
-      SELECT request_hash, response_json
-      FROM idempotency_keys
-      WHERE space_id = $1 AND scope = $2 AND idem_key = $3
-      LIMIT 1
-      `,
-      [spaceId, IDEM_SCOPE, idemKey]
-    );
-
-    if (saved.rowCount === 1) {
-      if (saved.rows[0].request_hash !== requestHash) {
-        return res.status(409).json({
-          error: 'idempotency_key_conflict',
-          message: 'Idempotency-Key was already used with a different request payload',
-        });
+    const riskGate = await paymentIntentRiskGateService.evaluateOnCreate({
+      paymentIntentId: intentId,
+      payload: {
+        space_id: spaceId,
+        payer_user_id,
+        payee_user_id,
+        amount_cents,
+        currency: normalizedCurrency,
+        risk_context: req.body?.risk_context || {}
+      },
+      actor: {
+        type: 'system',
+        id: 'public-payment-intents'
       }
-      return res.status(201).json(saved.rows[0].response_json);
-    }
+    });
 
-    return res.status(201).json(responsePayload);
+    const finalResponse = withRiskFields(provisionalResponse, riskGate);
+
+    await pool.query(
+      `
+        UPDATE idempotency_keys
+        SET response_json = $4::jsonb
+        WHERE space_id = $1
+          AND scope = $2
+          AND idem_key = $3
+      `,
+      [spaceId, IDEM_SCOPE, idemKey, JSON.stringify(finalResponse)]
+    );
+
+    return res.status(201).json(finalResponse);
   } catch (err) {
-    try { await db.query('ROLLBACK'); } catch (_) {}
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {}
     return next(err);
+  } finally {
+    client.release();
   }
 });
 

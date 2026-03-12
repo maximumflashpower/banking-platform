@@ -18,6 +18,7 @@ const caseEvidenceInternal = require('./routes/internal/caseEvidence');
 const stepUpStartInternal = require('./routes/internal/stepUpStart');
 const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit');
 const paymentsAchWebhookInternal = require('./routes/internal/paymentsAchWebhook');
+const paymentIntentRiskGateInternal = require('./routes/internal/paymentIntentRiskGate');
 
 // Stage 4C / 4E
 const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily');
@@ -49,7 +50,7 @@ app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buf) => {
     req.rawBody = buf.toString('utf8');
-  },
+  }
 }));
 
 // =============================
@@ -66,6 +67,7 @@ app.use('/internal/v1/cases', caseEvidenceInternal);
 
 app.use('/internal/v1/payments', paymentsAchSubmitInternal);
 app.use('/internal/v1/payments', paymentsAchWebhookInternal);
+app.use('/internal/v1/payments', paymentIntentRiskGateInternal);
 
 // Stage 4C
 app.use('/internal/v1', reconciliationRunDaily);
@@ -107,7 +109,7 @@ app.get('/health', (_req, res) => {
   res.status(200).json({
     ok: true,
     service: 'gateway-api',
-    env: process.env.NODE_ENV || 'development',
+    env: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -129,7 +131,7 @@ app.use('/public/v1/cards', cardsDisputesRouter);
 app.use((req, res) => {
   res.status(404).json({
     error: 'not_found',
-    path: req.originalUrl,
+    path: req.originalUrl
   });
 });
 
@@ -146,7 +148,7 @@ app.use((err, _req, res, _next) => {
 
   res.status(Number.isFinite(status) ? status : 500).json({
     error: 'internal_error',
-    message: err?.message || 'unknown',
+    message: err?.message || 'unknown'
   });
 });
 

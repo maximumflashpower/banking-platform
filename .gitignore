@@ -3,8 +3,14 @@
 # ------------------------
 
 # Windows Zone Identifier
+>>>>>>> origin/main
 *:Zone.Identifier
+.DS_Store
 
+# ------------------------
+# Node / JS
+# ------------------------
+=======
 # macOS
 .DS_Store
 
@@ -28,6 +34,25 @@ coverage/
 # ------------------------
 # Environment
 # ------------------------
+.env
+.env.local
+.env.*.local
+
+# ------------------------
+# Backups / dumps
+# ------------------------
+
+# Build artifacts
+dist/
+build/
+coverage/
+.cache/
+.turbo/
+.next/
+
+# ------------------------
+# Environment
+# ------------------------
 
 .env
 .env.local
@@ -39,6 +64,9 @@ coverage/
 
 *.tgz
 backups/
+*.dump
+*.sql
+*.tgz
 
 # ------------------------
 # Local artifacts
@@ -46,10 +74,25 @@ backups/
 
 cookies.txt
 cookies2.txt
+.cleanup_quarantine/
 
 # ------------------------
 # Docker
 # ------------------------
+
+docker-compose.override.yml
+
+# ------------------------
+# Logs
+# ------------------------
+*.log
+
+# ------------------------
+# Fixtures explicitly kept
+# ------------------------
+!tests/
+!tests/fixtures/
+!tests/fixtures/webhook-stage5f-final.json
 
 docker-compose.override.yml
 
