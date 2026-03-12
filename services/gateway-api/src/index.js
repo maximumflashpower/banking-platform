@@ -125,15 +125,15 @@ app.use('/internal/v1/cards', cardsFinancialWebhookRouter);
 app.use('/internal/v1/risk', riskSignalsIngestRouter);
 app.use('/internal/v1/risk', riskDecisionEvaluateRouter);
 
+// Stage 6C
+app.use(sanctionsScreeningRoutes);
+
 // Stage 5C - Ledger internal routes mounted in gateway-api
 app.use('/internal/v1/ledger', ledgerCreateHoldRouter);
 app.use('/internal/v1/ledger', ledgerReleaseHoldRouter);
 app.use('/internal/v1/ledger', ledgerBalancesRouter);
 app.use('/internal/v1/ledger', ledgerEnsureWalletRouter);
 app.use('/internal/v1/ledger', ledgerPostingsCommitRouter);
-
-
-app.use(sanctionsScreeningRoutes);
 
 // =============================
 // BASIC ROUTES
