@@ -1,5 +1,3 @@
-Está escrito como documentación técnica formal, sin pausas ni explicaciones intermedias, para que puedas incluirlo directamente en tu repositorio.
-
 Stage 5F — Webhook Hardening Architecture
 Overview
 
@@ -382,4 +380,49 @@ observability support ✔
 Stage Result
 Stage 5F — HARDENING COMPLETE
 
+<<<<<<< HEAD
 The system is now capable of processing card processor webhooks with the reliability standards expected in modern financial platforms.
+
+## Stage 5F Closure Evidence
+
+Validated final event:
+- provider_event_id: evt-stage5f-final-001
+- process_status: processed
+
+Backups captured:
+- backups/stage5f/cards_db_stage5f.dump
+- backups/stage5f/financial_db_stage5f.dump
+
+Closure notes:
+- durable intake verified
+- async processing verified
+- duplicate detection verified
+- retry control verified
+- terminal failure handling verified
+- capture persistence verified
+- replay safety verified
+=======
+
+Stage Result
+Stage 5F — HARDENING COMPLETE
+
+The system is now capable of processing card processor webhooks with the reliability standards expected in modern financial platforms.
+
+## Stage 5F Closure Evidence
+
+Validated final event:
+- provider_event_id: evt-stage5f-final-001
+- process_status: processed
+
+Backups captured:
+- backups/stage5f/cards_db_stage5f.dump
+- backups/stage5f/financial_db_stage5f.dump
+
+Closure notes:
+- durable intake verified
+- async processing verified
+- duplicate detection verified
+- retry control verified
+- terminal failure handling verified
+- capture persistence verified
+- replay safety verified

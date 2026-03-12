@@ -30,6 +30,10 @@ const cardsAuthDecisionRouter = require('./routes/internal/cardsAuthDecision');
 const cardsAuthorizationWebhookRouter = require('./routes/internal/cardsAuthorizationWebhook');
 const cardsFinancialWebhookRouter = require('./routes/internal/cardsFinancialWebhook');
 
+// Stage 6A
+const riskSignalsIngestRouter = require('./routes/internal/riskSignalsIngest');
+const riskDecisionEvaluateRouter = require('./routes/internal/riskDecisionEvaluate');
+
 // Ledger domain HTTP adapters
 const ledgerCreateHoldRouter = require('./routes/internal/ledgerHoldsCreate');
 const ledgerReleaseHoldRouter = require('./routes/internal/ledgerHoldsRelease');
@@ -80,12 +84,17 @@ app.use('/internal/v1/cards', cardsAuthorizationWebhookRouter);
 // Stage 5D
 app.use('/internal/v1/cards', cardsFinancialWebhookRouter);
 
+// Stage 6A
+app.use('/internal/v1/risk', riskSignalsIngestRouter);
+app.use('/internal/v1/risk', riskDecisionEvaluateRouter);
+
 // Stage 5C - Ledger internal routes mounted in gateway-api
 app.use('/internal/v1/ledger', ledgerCreateHoldRouter);
 app.use('/internal/v1/ledger', ledgerReleaseHoldRouter);
 app.use('/internal/v1/ledger', ledgerBalancesRouter);
 app.use('/internal/v1/ledger', ledgerEnsureWalletRouter);
 app.use('/internal/v1/ledger', ledgerPostingsCommitRouter);
+
 // =============================
 // BASIC ROUTES
 // =============================
@@ -149,7 +158,7 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`[gateway-api] listening on http://${HOST}:${PORT}`);
+  console.log('[gateway-api] listening on http://' + HOST + ':' + PORT);
 });
 
 // =============================
@@ -157,7 +166,7 @@ const server = app.listen(PORT, HOST, () => {
 // =============================
 
 function shutdown(signal) {
-  console.log(`[gateway-api] received ${signal}, shutting down...`);
+  console.log('[gateway-api] received ' + signal + ', shutting down...');
 
   server.close(() => {
     console.log('[gateway-api] server closed');

@@ -1,0 +1,33 @@
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "risk.signal.ingested.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "signal_id",
+    "signal_type",
+    "subject_type",
+    "subject_id",
+    "severity",
+    "source_system"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": { "type": "string", "const": "risk.signal.ingested.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "signal_id": { "type": "string", "format": "uuid" },
+    "signal_type": { "type": "string", "minLength": 1 },
+    "subject_type": { "type": "string", "enum": ["user", "business", "payment_intent", "card", "space"] },
+    "subject_id": { "type": "string", "format": "uuid" },
+    "space_id": { "type": ["string", "null"], "format": "uuid" },
+    "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+    "source_system": { "type": "string", "minLength": 1 }
+  }
+}
+```
+
+---

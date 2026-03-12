@@ -2,17 +2,23 @@ services:
   api:
     build: .
     container_name: banking_api
+
+    restart: unless-stopped
+
     ports:
       - "3000:3000"
+
     environment:
       NODE_ENV: development
       SERVICE_NAME: gateway-api
       PORT: 3000
+
       ACH_RAIL_ENABLED: "true"
       RISK_BYPASS_FOR_LOCAL: "true"
       LEDGER_BASE_URL: "http://localhost:3000"
 
       DATABASE_URL: postgres://app:app@db:5432/social
+      RISK_DATABASE_URL: postgres://app:app@db:5432/risk_db
       IDENTITY_DATABASE_URL: postgres://app:app@db:5432/identity
       FINANCIAL_DATABASE_URL: postgres://app:app@db:5432/financial_db
       CASE_DATABASE_URL: postgres://app:app@db:5432/case_db
@@ -37,12 +43,17 @@ services:
   db:
     image: postgres:16-alpine
     container_name: banking_postgres
+
+    restart: unless-stopped
+
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
       POSTGRES_DB: social
+
     ports:
       - "5432:5432"
+
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
@@ -50,6 +61,8 @@ services:
       - ./datastores/financial-db:/seed/financial-db:ro
       - ./datastores/identity-db:/seed/identity-db:ro
       - ./datastores/case-db:/seed/case-db:ro
+      - ./datastores/risk-db:/seed/risk-db:ro
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d social"]
       interval: 5s

@@ -1,17 +1,61 @@
+# ------------------------
+# OS artifacts
+# ------------------------
 
-# Windows Zone Identifier (never commit)
+# Windows Zone Identifier
 *:Zone.Identifier
 
-# deps
-node_modules/
+# macOS
+.DS_Store
 
-# backups
+# ------------------------
+# Node / JS
+# ------------------------
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+dist/
+build/
+coverage/
+.cache/
+.turbo/
+.next/
+
+# ------------------------
+# Environment
+# ------------------------
+
+.env
+.env.local
+.env.*.local
+
+# ------------------------
+# Backups
+# ------------------------
+
 *.tgz
 backups/
 
-# local artifacts
+# ------------------------
+# Local artifacts
+# ------------------------
+
 cookies.txt
 cookies2.txt
 
-# Local overrides
-/docker-compose.override.yml
+# ------------------------
+# Docker
+# ------------------------
+
+docker-compose.override.yml
+
+# ------------------------
+# Misc
+# ------------------------
+
+*.log
+.cleanup_quarantine/
