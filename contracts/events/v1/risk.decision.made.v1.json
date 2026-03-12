@@ -1,0 +1,45 @@
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "risk.decision.made.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "decision_id",
+    "subject_type",
+    "subject_id",
+    "decision_outcome",
+    "reason_code",
+    "recommended_actions"
+  ],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "event_type": { "type": "string", "const": "risk.decision.made.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "decision_id": { "type": "string", "format": "uuid" },
+    "subject_type": { "type": "string", "enum": ["user", "business", "payment_intent", "card", "space"] },
+    "subject_id": { "type": "string", "format": "uuid" },
+    "space_id": { "type": ["string", "null"], "format": "uuid" },
+    "decision_outcome": { "type": "string", "enum": ["allow", "observe", "review", "decline_recommendation"] },
+    "reason_code": { "type": "string", "minLength": 1 },
+    "risk_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+    "recommended_actions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "manual_review",
+          "enhanced_monitoring",
+          "collect_more_signals",
+          "decline_recommendation"
+        ]
+      }
+    }
+  }
+}
+```
+
+---
