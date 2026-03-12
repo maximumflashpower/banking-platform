@@ -103,6 +103,19 @@ function toApiResponse(record, meta = {}) {
   };
 }
 
+function emitRiskMonitoringEvent({ cardId, authId, riskScore, reason }) {
+  console.log(
+    JSON.stringify({
+      event: 'risk_monitoring_event',
+      card_id: cardId,
+      auth_id: authId,
+      risk_score: Number.isFinite(Number(riskScore)) ? Number(riskScore) : 0,
+      reason: reason || 'unspecified',
+      timestamp: new Date().toISOString(),
+    })
+  );
+}
+
 async function maybeRepairApprovedAuthorization(cardsDb, financialDb, existing) {
   if (!existing) {
     return existing;
@@ -112,7 +125,6 @@ async function maybeRepairApprovedAuthorization(cardsDb, financialDb, existing) 
     return existing;
   }
 
-  // Solo se considera completo cuando existen ambos.
   if (existing.ledgerHoldId && existing.ledgerHoldRef) {
     return existing;
   }
@@ -224,7 +236,6 @@ async function maybeCreateLedgerHold(cardsDb, persisted, accountId) {
     return persisted;
   }
 
-  // Solo saltar si ya está completo.
   if (persisted.ledgerHoldId && persisted.ledgerHoldRef) {
     return persisted;
   }
@@ -431,6 +442,9 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
   let riskStatus = 'not_requested';
   let availableBalanceSnapshot = null;
   let ledgerAccountId = null;
+  let riskScore = 0;
+  let riskReason = null;
+  let shouldEmitMonitoringEvent = false;
 
   if (String(card.status || '').toLowerCase() === 'frozen') {
     decision = 'decline';
@@ -458,7 +472,6 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
 
   if (decision === 'approve') {
     const riskResult = await evaluateRisk({
-      flow: 'card_authorization',
       cardId: input.cardId,
       spaceId,
       amount: Number(input.amount),
@@ -470,16 +483,20 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
       idempotencyKey,
     });
 
-    if (!riskResult.ok) {
+    riskScore = riskResult.score;
+    riskReason = riskResult.reason;
+
+    if (riskResult.decision === 'block_tx') {
       decision = 'decline';
-      declineReason = 'RISK_UNAVAILABLE';
-      riskStatus = riskResult.status;
-    } else if (riskResult.status === 'declined') {
-      decision = 'decline';
-      declineReason = 'RISK_DECLINED';
-      riskStatus = 'declined';
+      declineReason = 'RISK_BLOCK_TX';
+      riskStatus = 'block_tx';
+    } else if (riskResult.decision === 'allow_with_monitoring') {
+      decision = 'approve';
+      riskStatus = 'allow_with_monitoring';
+      shouldEmitMonitoringEvent = true;
     } else {
-      riskStatus = 'approved';
+      decision = 'approve';
+      riskStatus = 'allow';
     }
   }
 
@@ -502,6 +519,15 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
 
   if (persisted.decision === 'approve') {
     persisted = await maybeCreateLedgerHold(cardsDb, persisted, ledgerAccountId);
+  }
+
+  if (shouldEmitMonitoringEvent) {
+    emitRiskMonitoringEvent({
+      cardId: persisted.cardId,
+      authId: persisted.id,
+      riskScore,
+      reason: riskReason,
+    });
   }
 
   await publishDecisionOutbox(cardsDb, persisted);
