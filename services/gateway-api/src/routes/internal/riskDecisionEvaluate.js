@@ -25,9 +25,6 @@ router.post('/decision/evaluate', async (req, res) => {
     });
   }
 
-  // Stage 6E minimal:
-  // mantener wiring listo pero devolver allow por defecto.
-  // Se deja un ejemplo opcional de bloqueo simple por MCC para pruebas controladas.
   if (merchantMcc === '9999') {
     return res.status(200).json({
       ok: true,
