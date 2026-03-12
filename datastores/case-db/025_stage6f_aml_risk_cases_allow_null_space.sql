@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE aml_risk_cases
+  ALTER COLUMN space_id DROP NOT NULL;
+
+COMMIT;
