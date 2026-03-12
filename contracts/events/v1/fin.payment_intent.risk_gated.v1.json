@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "fin.payment_intent.risk_gated.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "payment_intent_id",
+    "space_id",
+    "decision_id",
+    "risk_gate_status",
+    "reason_code",
+    "risk_score"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string",
+      "const": "fin.payment_intent.risk_gated.v1"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payment_intent_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "space_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "decision_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "risk_gate_status": {
+      "type": "string",
+      "enum": ["allow", "under_review", "block_tx"]
+    },
+    "reason_code": {
+      "type": "string"
+    },
+    "risk_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "aml_risk_case_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "ops_notification_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "snapshot": {
+      "type": "object"
+    }
+  }
+}

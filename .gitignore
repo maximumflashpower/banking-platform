@@ -1,17 +1,12 @@
 # ------------------------
 # OS artifacts
 # ------------------------
-
-# Windows Zone Identifier
 *:Zone.Identifier
-
-# macOS
 .DS_Store
 
 # ------------------------
 # Node / JS
 # ------------------------
-
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -28,34 +23,38 @@ coverage/
 # ------------------------
 # Environment
 # ------------------------
-
 .env
 .env.local
 .env.*.local
 
 # ------------------------
-# Backups
+# Backups / dumps
 # ------------------------
-
-*.tgz
 backups/
+*.dump
+*.sql
+*.tgz
 
 # ------------------------
 # Local artifacts
 # ------------------------
-
 cookies.txt
 cookies2.txt
+.cleanup_quarantine/
 
 # ------------------------
 # Docker
 # ------------------------
-
 docker-compose.override.yml
 
 # ------------------------
-# Misc
+# Logs
 # ------------------------
-
 *.log
-.cleanup_quarantine/
+
+# ------------------------
+# Fixtures explicitly kept
+# ------------------------
+!tests/
+!tests/fixtures/
+!tests/fixtures/webhook-stage5f-final.json

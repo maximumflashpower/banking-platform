@@ -1,4 +1,5 @@
 Stage 5F — Webhook Hardening Architecture
+
 Overview
 
 Stage 5F introduces a resilient event ingestion and processing architecture for card processor webhooks. The system guarantees durability, idempotency, replay safety, and tolerance to duplicate delivery and out-of-order events.
@@ -8,6 +9,7 @@ The design separates the acceptance of external events from the processing of bu
 The architecture follows industry practices used by modern payment processors.
 
 System Architecture
+
 Processor / Network
        │
        ▼
@@ -40,6 +42,7 @@ cards_outbox
        │
        ▼
 Event Bus / Consumers
+
 Webhook Intake Flow
 
 When a webhook arrives:
@@ -57,6 +60,7 @@ Processing happens asynchronously.
 This guarantees that webhook ingestion never depends on downstream processing success.
 
 Database Components
+
 cards_webhook_events
 
 Stores the raw event payload received from the processor.
@@ -79,6 +83,7 @@ provider_event_id
 event_type
 payload
 received_at
+
 card_event_inbox
 
 Transactional queue used by the worker to process events.
@@ -103,6 +108,7 @@ duplicate
 deferred
 failed_retryable
 failed_terminal
+
 card_authorizations
 
 Represents approved authorization decisions for cards.
@@ -182,6 +188,7 @@ pending → processing → processed
 pending → processing → duplicate
 pending → processing → failed_retryable
 pending → processing → failed_terminal
+
 Capture Processing Logic
 
 Processor:
@@ -209,6 +216,7 @@ insert capture
 
 check pending reversals
 if any → resolve them
+
 Duplicate Protection
 
 Duplicates can occur due to webhook retries.
@@ -271,6 +279,7 @@ retryable
 terminal
 duplicate
 deferred
+
 Idempotency Guarantees
 
 Replay safety is achieved through:
@@ -283,6 +292,7 @@ Replaying the same webhook results in:
 
 duplicate state
 no additional capture creation
+
 Dispute Handling Isolation
 
 Public disputes API:
@@ -305,6 +315,7 @@ This ensures separation between:
 card network events
 financial accounting
 case management
+
 Financial System Isolation
 
 Core ledger remains independent from the webhook processing pipeline.
@@ -327,6 +338,7 @@ cards_capture_created_total
 cards_capture_duplicate_total
 cards_pending_reversals_total
 cards_outbox_pending_total
+
 Operational Health Checks
 
 Recommended monitoring:
@@ -337,6 +349,7 @@ oldest outbox event
 retry spike detection
 terminal failures rate
 pending reversal age
+
 Reliability Guarantees
 
 The architecture provides:
@@ -377,31 +390,6 @@ retry handling ✔
 out-of-order tolerance ✔
 domain isolation ✔
 observability support ✔
-Stage Result
-Stage 5F — HARDENING COMPLETE
-
-<<<<<<< HEAD
-The system is now capable of processing card processor webhooks with the reliability standards expected in modern financial platforms.
-
-## Stage 5F Closure Evidence
-
-Validated final event:
-- provider_event_id: evt-stage5f-final-001
-- process_status: processed
-
-Backups captured:
-- backups/stage5f/cards_db_stage5f.dump
-- backups/stage5f/financial_db_stage5f.dump
-
-Closure notes:
-- durable intake verified
-- async processing verified
-- duplicate detection verified
-- retry control verified
-- terminal failure handling verified
-- capture persistence verified
-- replay safety verified
-=======
 
 Stage Result
 Stage 5F — HARDENING COMPLETE

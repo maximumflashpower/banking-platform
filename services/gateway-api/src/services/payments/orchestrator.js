@@ -3,12 +3,16 @@
 const { randomUUID } = require('crypto');
 const { pool } = require('../../infrastructure/financialDb');
 const { submitAchTransfer } = require('./rails/achAdapter');
+const paymentIntentRiskGateService = require('./paymentIntentRiskGateService');
 
 const ACH_RAIL_DISABLED_ERROR = 'rail_disabled';
 const PAYMENT_INTENT_NOT_FOUND_ERROR = 'payment_intent_not_found';
 const INVALID_PAYMENT_STATE_ERROR = 'invalid_payment_state';
 const IDEMPOTENCY_KEY_REQUIRED_ERROR = 'idempotency_key_required';
 const PAYMENT_INTENT_ID_REQUIRED_ERROR = 'payment_intent_id_required';
+const PAYMENT_INTENT_UNDER_REVIEW_ERROR = 'payment_intent_under_review';
+const PAYMENT_INTENT_BLOCKED_BY_RISK_ERROR = 'payment_intent_blocked_by_risk';
+const PAYMENT_INTENT_NOT_RISK_CLEARED_ERROR = 'payment_intent_not_risk_cleared';
 
 function isAchRailEnabled() {
   return String(process.env.ACH_RAIL_ENABLED || 'true').toLowerCase() === 'true';
@@ -17,24 +21,36 @@ function isAchRailEnabled() {
 async function getCurrentPaymentIntent(client, paymentIntentId) {
   const result = await client.query(
     `
-      select
-        id,
-        space_id,
-        payer_user_id,
-        payee_user_id,
-        currency,
-        amount_cents,
-        idempotency_key,
-        correlation_id,
-        created_at,
-        updated_at,
-        state,
-        reason_code,
-        reason_detail,
-        state_created_at
-      from current_payment_intents
-      where id = $1
-      limit 1
+      SELECT
+        pi.id,
+        pi.space_id,
+        pi.payer_user_id,
+        pi.payee_user_id,
+        pi.currency,
+        pi.amount_cents,
+        pi.idempotency_key,
+        pi.correlation_id,
+        pi.created_at,
+        pi.updated_at,
+        pi.risk_gate_status,
+        latest_state.state,
+        latest_state.reason_code,
+        latest_state.reason_detail,
+        latest_state.created_at AS state_created_at
+      FROM payment_intents pi
+      JOIN LATERAL (
+        SELECT
+          pis.state,
+          pis.reason_code,
+          pis.reason_detail,
+          pis.created_at
+        FROM payment_intent_states pis
+        WHERE pis.payment_intent_id = pi.id
+        ORDER BY pis.created_at DESC
+        LIMIT 1
+      ) latest_state ON TRUE
+      WHERE pi.id = $1
+      LIMIT 1
     `,
     [paymentIntentId]
   );
@@ -45,7 +61,7 @@ async function getCurrentPaymentIntent(client, paymentIntentId) {
 async function getExistingTransferByIdempotency(client, paymentIntentId, idempotencyKey) {
   const result = await client.query(
     `
-      select
+      SELECT
         id,
         payment_intent_id,
         provider,
@@ -57,10 +73,10 @@ async function getExistingTransferByIdempotency(client, paymentIntentId, idempot
         metadata,
         created_at,
         updated_at
-      from rails_transfers_ach
-      where payment_intent_id = $1
-        and idempotency_key = $2
-      limit 1
+      FROM rails_transfers_ach
+      WHERE payment_intent_id = $1
+        AND idempotency_key = $2
+      LIMIT 1
     `,
     [paymentIntentId, idempotencyKey]
   );
@@ -73,7 +89,7 @@ async function createTransferRecord(client, paymentIntent, idempotencyKey, corre
 
   const result = await client.query(
     `
-      insert into rails_transfers_ach (
+      INSERT INTO rails_transfers_ach (
         payment_intent_id,
         provider,
         provider_transfer_id,
@@ -83,7 +99,7 @@ async function createTransferRecord(client, paymentIntent, idempotencyKey, corre
         idempotency_key,
         metadata
       )
-      values (
+      VALUES (
         $1,
         $2,
         null,
@@ -93,7 +109,7 @@ async function createTransferRecord(client, paymentIntent, idempotencyKey, corre
         $6,
         $7::jsonb
       )
-      returning
+      RETURNING
         id,
         payment_intent_id,
         provider,
@@ -117,8 +133,8 @@ async function createTransferRecord(client, paymentIntent, idempotencyKey, corre
         correlation_id: correlationId || paymentIntent.correlation_id || null,
         rail: 'ach',
         stage: '4A',
-        amount_cents: paymentIntent.amount_cents,
-      }),
+        amount_cents: paymentIntent.amount_cents
+      })
     ]
   );
 
@@ -128,15 +144,15 @@ async function createTransferRecord(client, paymentIntent, idempotencyKey, corre
 async function markTransferSubmitted(client, transferId, adapterResponse) {
   const result = await client.query(
     `
-      update rails_transfers_ach
-      set
+      UPDATE rails_transfers_ach
+      SET
         provider = $2,
         provider_transfer_id = $3,
         state = $4,
-        metadata = coalesce(metadata, '{}'::jsonb) || $5::jsonb,
-        updated_at = now()
-      where id = $1
-      returning
+        metadata = COALESCE(metadata, '{}'::jsonb) || $5::jsonb,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING
         id,
         payment_intent_id,
         provider,
@@ -154,7 +170,7 @@ async function markTransferSubmitted(client, transferId, adapterResponse) {
       adapterResponse.provider,
       adapterResponse.provider_transfer_id,
       adapterResponse.state,
-      JSON.stringify(adapterResponse.metadata || {}),
+      JSON.stringify(adapterResponse.metadata || {})
     ]
   );
 
@@ -164,7 +180,7 @@ async function markTransferSubmitted(client, transferId, adapterResponse) {
 async function insertPaymentIntentState(client, paymentIntentId, nextState, correlationId) {
   const result = await client.query(
     `
-      insert into payment_intent_states (
+      INSERT INTO payment_intent_states (
         id,
         payment_intent_id,
         state,
@@ -172,13 +188,36 @@ async function insertPaymentIntentState(client, paymentIntentId, nextState, corr
         reason_detail,
         correlation_id
       )
-      values ($1, $2, $3, null, null, $4)
-      returning id, payment_intent_id, state, created_at
+      VALUES ($1, $2, $3, null, null, $4)
+      RETURNING id, payment_intent_id, state, created_at
     `,
     [randomUUID(), paymentIntentId, nextState, correlationId || 'ach_submit']
   );
 
   return result.rows[0];
+}
+
+function throwRiskClearanceError(statusValue) {
+  if (statusValue === 'under_review') {
+    const error = new Error(PAYMENT_INTENT_UNDER_REVIEW_ERROR);
+    error.code = PAYMENT_INTENT_UNDER_REVIEW_ERROR;
+    error.status = 409;
+    throw error;
+  }
+
+  if (statusValue === 'block_tx') {
+    const error = new Error(PAYMENT_INTENT_BLOCKED_BY_RISK_ERROR);
+    error.code = PAYMENT_INTENT_BLOCKED_BY_RISK_ERROR;
+    error.status = 409;
+    throw error;
+  }
+
+  if (statusValue !== 'allow') {
+    const error = new Error(PAYMENT_INTENT_NOT_RISK_CLEARED_ERROR);
+    error.code = PAYMENT_INTENT_NOT_RISK_CLEARED_ERROR;
+    error.status = 409;
+    throw error;
+  }
 }
 
 async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId }) {
@@ -203,10 +242,12 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
     throw error;
   }
 
+  await paymentIntentRiskGateService.assertRiskCleared(paymentIntentId);
+
   const client = await pool.connect();
 
   try {
-    await client.query('begin');
+    await client.query('BEGIN');
 
     const paymentIntent = await getCurrentPaymentIntent(client, paymentIntentId);
 
@@ -217,6 +258,8 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
       throw error;
     }
 
+    throwRiskClearanceError(paymentIntent.risk_gate_status);
+
     const existingTransfer = await getExistingTransferByIdempotency(
       client,
       paymentIntentId,
@@ -224,7 +267,7 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
     );
 
     if (existingTransfer) {
-      await client.query('commit');
+      await client.query('COMMIT');
       return {
         ok: true,
         idempotent: true,
@@ -232,8 +275,8 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
           id: existingTransfer.id,
           provider: existingTransfer.provider,
           provider_transfer_id: existingTransfer.provider_transfer_id,
-          state: existingTransfer.state,
-        },
+          state: existingTransfer.state
+        }
       };
     }
 
@@ -243,7 +286,7 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
       error.status = 409;
       error.details = {
         expected: 'queued',
-        actual: paymentIntent.state,
+        actual: paymentIntent.state
       };
       throw error;
     }
@@ -259,7 +302,7 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
       paymentIntent,
       transfer: queuedTransfer,
       idempotencyKey,
-      correlationId,
+      correlationId
     });
 
     const submittedTransfer = await markTransferSubmitted(
@@ -275,7 +318,7 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
       correlationId || paymentIntent.correlation_id
     );
 
-    await client.query('commit');
+    await client.query('COMMIT');
 
     return {
       ok: true,
@@ -284,11 +327,11 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
         id: submittedTransfer.id,
         provider: submittedTransfer.provider,
         provider_transfer_id: submittedTransfer.provider_transfer_id,
-        state: submittedTransfer.state,
-      },
+        state: submittedTransfer.state
+      }
     };
   } catch (error) {
-    await client.query('rollback');
+    await client.query('ROLLBACK');
     throw error;
   } finally {
     client.release();
@@ -303,4 +346,7 @@ module.exports = {
   INVALID_PAYMENT_STATE_ERROR,
   IDEMPOTENCY_KEY_REQUIRED_ERROR,
   PAYMENT_INTENT_ID_REQUIRED_ERROR,
+  PAYMENT_INTENT_UNDER_REVIEW_ERROR,
+  PAYMENT_INTENT_BLOCKED_BY_RISK_ERROR,
+  PAYMENT_INTENT_NOT_RISK_CLEARED_ERROR
 };

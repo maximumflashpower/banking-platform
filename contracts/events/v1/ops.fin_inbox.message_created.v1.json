@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ops.fin_inbox.message_created.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "notification_id",
+    "space_id",
+    "payment_intent_id",
+    "priority",
+    "subject",
+    "status"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string",
+      "const": "ops.fin_inbox.message_created.v1"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notification_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "case_id": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "space_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "payment_intent_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["medium", "high", "critical"]
+    },
+    "subject": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending_ack", "acknowledged", "closed"]
+    },
+    "metadata": {
+      "type": "object"
+    }
+  }
+}
