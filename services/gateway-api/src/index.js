@@ -20,6 +20,8 @@ const paymentsAchSubmitInternal = require('./routes/internal/paymentsAchSubmit')
 const paymentsAchWebhookInternal = require('./routes/internal/paymentsAchWebhook');
 const paymentIntentRiskGateInternal = require('./routes/internal/paymentIntentRiskGate');
 
+const sanctionsScreeningRoutes = require('./routes/internal/sanctionsScreening');
+
 // Stage 4C / 4E
 const reconciliationRunDaily = require('./routes/internal/reconciliationRunDaily');
 const reconciliationRunsInternal = require('./routes/internal/reconciliationRuns');
@@ -52,10 +54,6 @@ app.use(express.json({
     req.rawBody = buf.toString('utf8');
   }
 }));
-
-// =============================
-// INTERNAL API
-// =============================
 
 app.use('/internal/v1/businesses', businessesInternal);
 app.use('/internal/v1/security', stepUpStartInternal);
@@ -90,16 +88,15 @@ app.use('/internal/v1/cards', cardsFinancialWebhookRouter);
 app.use('/internal/v1/risk', riskSignalsIngestRouter);
 app.use('/internal/v1/risk', riskDecisionEvaluateRouter);
 
-// Stage 5C - Ledger internal routes mounted in gateway-api
+// Stage 6C
+app.use(sanctionsScreeningRoutes);
+
+// Stage 5C
 app.use('/internal/v1/ledger', ledgerCreateHoldRouter);
 app.use('/internal/v1/ledger', ledgerReleaseHoldRouter);
 app.use('/internal/v1/ledger', ledgerBalancesRouter);
 app.use('/internal/v1/ledger', ledgerEnsureWalletRouter);
 app.use('/internal/v1/ledger', ledgerPostingsCommitRouter);
-
-// =============================
-// BASIC ROUTES
-// =============================
 
 app.get('/', (_req, res) => {
   res.status(200).send('OK - gateway-api up');
@@ -113,20 +110,11 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// =============================
-// PUBLIC API
-// =============================
-
 app.use('/public/v1/finance', paymentIntentsRouter);
 app.use('/public/v1/finance', approvalsRouter);
-
 app.use('/public/v1/financial-inbox', financialInboxRouter);
 app.use('/public/v1/auth', stepUpRouter);
 app.use('/public/v1/cards', cardsDisputesRouter);
-
-// =============================
-// NOT FOUND
-// =============================
 
 app.use((req, res) => {
   res.status(404).json({
@@ -134,10 +122,6 @@ app.use((req, res) => {
     path: req.originalUrl
   });
 });
-
-// =============================
-// ERROR HANDLER
-// =============================
 
 app.use((err, _req, res, _next) => {
   console.error('[gateway-api] error:', err);
@@ -152,20 +136,12 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-// =============================
-// SERVER START
-// =============================
-
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {
   console.log('[gateway-api] listening on http://' + HOST + ':' + PORT);
 });
-
-// =============================
-// GRACEFUL SHUTDOWN
-// =============================
 
 function shutdown(signal) {
   console.log('[gateway-api] received ' + signal + ', shutting down...');

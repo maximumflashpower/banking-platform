@@ -1,0 +1,8 @@
+topic: risk.sanctions_screening.recorded.v1
+producer: gateway-api
+domain: risk
+notes:
+- records sanctions screening outcomes only
+- no automatic freeze
+- no hard product block
+- potential_match may create case
