@@ -1,7 +1,11 @@
+<<<<<<< HEAD
 python3 - <<'PY'
 from pathlib import Path
 
 content = """Stage 5F — Webhook Hardening Architecture
+=======
+Stage 5F — Webhook Hardening Architecture
+>>>>>>> 42b376a (Stage 6B — Payment Intent Risk Gate)
 
 Overview
 
