@@ -10,6 +10,7 @@ const financialInboxRoutes = require('./routes/financialInbox');
 const cardsDisputesRoutes = require('./routes/cardsDisputes');
 const stepUpRoutes = require('./routes/stepUp');
 const webQrSessionsRoutes = require('./routes/webQrSessions');
+const webSessionSecurityService = require('./services/identity/webSessionSecurityService');
 
 const internalBusinessesRoutes = require('./routes/internal/businesses');
 const internalCasesRoutes = require('./routes/internal/cases');
@@ -50,6 +51,18 @@ app.get('/health', (_req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+app.use(async (req, _res, next) => {
+  try {
+    if (req.path.startsWith('/public/v1/web/')) {
+      await webSessionSecurityService.expireInactiveSessions();
+    }
+  } catch (_err) {
+    // best effort
+  }
+  next();
+});
+
 
 /**
  * Public API

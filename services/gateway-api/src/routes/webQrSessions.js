@@ -82,6 +82,10 @@ router.post('/qr/session/confirm', requireSession, async (req, res, next) => {
       activeSpaceId: result.session.activeSpaceId
     });
   } catch (error) {
+    if (error?.code === '22P02') {
+      return res.status(400).json({ error: 'session_request_id_invalid' });
+    }
+
     return next(error);
   }
 });
@@ -104,7 +108,9 @@ router.get('/session/status', async (req, res, next) => {
       return res.status(200).json({
         status: session.status,
         sessionRequestId: session.sessionRequestId,
-        expiresAt: session.expiresAt
+        expiresAt: session.expiresAt,
+        invalidatedReason: session.invalidatedReason || null,
+        invalidatedAt: session.invalidatedAt || null
       });
     }
 
@@ -117,9 +123,15 @@ router.get('/session/status', async (req, res, next) => {
       userId: session.userId,
       activeSpaceId: session.activeSpaceId,
       confirmedAt: session.confirmedAt,
-      expiresAt: session.expiresAt
+      expiresAt: session.expiresAt,
+      invalidatedReason: session.invalidatedReason || null,
+      invalidatedAt: session.invalidatedAt || null
     });
   } catch (error) {
+    if (error?.code === '22P02') {
+      return res.status(400).json({ error: 'session_request_id_invalid' });
+    }
+
     return next(error);
   }
 });
@@ -134,7 +146,8 @@ router.post('/session/logout', requireSession, async (req, res, next) => {
 
     const session = await webQrSessionRepo.revokeSession({
       sessionId,
-      userId: req.session.user_id
+      userId: req.session.user_id,
+      reason: 'revoked'
     });
 
     if (!session) {
@@ -146,6 +159,10 @@ router.post('/session/logout', requireSession, async (req, res, next) => {
       sessionId: session.sessionId
     });
   } catch (error) {
+    if (error?.code === '22P02') {
+      return res.status(400).json({ error: 'session_id_invalid' });
+    }
+
     return next(error);
   }
 });
