@@ -9,6 +9,7 @@ const approvalsRoutes = require('./routes/approvals');
 const financialInboxRoutes = require('./routes/financialInbox');
 const cardsDisputesRoutes = require('./routes/cardsDisputes');
 const stepUpRoutes = require('./routes/stepUp');
+const webQrSessionsRoutes = require('./routes/webQrSessions');
 
 const internalBusinessesRoutes = require('./routes/internal/businesses');
 const internalCasesRoutes = require('./routes/internal/cases');
@@ -59,41 +60,35 @@ app.use('/public/v1/finance/approvals', approvalsRoutes);
 app.use('/public/v1/financial-inbox', financialInboxRoutes);
 app.use('/public/v1/cards/disputes', cardsDisputesRoutes);
 app.use('/public/v1/auth/step-up', stepUpRoutes);
+app.use('/public/v1/web', webQrSessionsRoutes);
 
 /**
  * Internal API
  */
 app.use('/internal/v1/businesses', internalBusinessesRoutes);
-
 app.use('/internal/v1/case-management/cases', internalCasesRoutes);
 app.use('/internal/v1/case-management/cases', internalCaseAssignmentsRoutes);
 app.use('/internal/v1/case-management/cases', internalCaseEvidenceRoutes);
 app.use('/internal/v1/case-management/cases', internalCaseStateRoutes);
-
 app.use('/internal/v1/cards', internalCardsRoutes);
 app.use('/internal/v1/cards', internalCardsAuthDecisionRoutes);
 app.use('/internal/v1/cards', internalCardsAuthorizationWebhookRoutes);
 app.use('/internal/v1/cards', internalCardsFinancialWebhookRoutes);
-
 app.use('/internal/v1/ledger', internalLedgerEnsureWalletRoutes);
 app.use('/internal/v1/ledger', internalLedgerAccountsBalanceRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsCreateRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsReleaseRoutes);
 app.use('/internal/v1/ledger', internalLedgerPostingsCommitRoutes);
-
 app.use('/internal/v1/payments', internalPaymentsAchSubmitRoutes);
 app.use('/internal/v1/payments', internalPaymentsAchWebhookRoutes);
 app.use('/internal/v1/payments', internalPaymentIntentRiskGateRoutes);
-
 app.use('/internal/v1/risk', internalRiskSignalsIngestRoutes);
 app.use('/internal/v1/risk', internalRiskDecisionEvaluateRoutes);
 app.use('/internal/v1/risk', internalSanctionsScreeningRoutes);
 app.use('/internal/v1/risk', internalRiskActionsApplyRoutes);
-
 app.use('/internal/v1/reconciliation/runs', internalReconciliationRunsRoutes);
 app.use('/internal/v1/reconciliation/runs', internalReconciliationRunDailyRoutes);
 app.use('/internal/v1/reconciliation/actions', internalReconciliationActionsRoutes);
-
 app.use('/internal/v1/step-up', internalStepUpStartRoutes);
 
 app.use((req, res) => {

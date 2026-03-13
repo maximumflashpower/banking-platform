@@ -17,9 +17,16 @@ async function runQuery(text, params) {
 async function getById(sessionId) {
   const result = await runQuery(
     `
-      select *
+      select
+        id,
+        user_id,
+        device_id,
+        created_at,
+        expires_at,
+        space_id,
+        revoked_at
       from sessions
-      where session_id = $1
+      where id = $1
       limit 1
     `,
     [sessionId]
@@ -32,9 +39,16 @@ async function setActiveSpace({ session_id, space_id }) {
   const result = await runQuery(
     `
       update sessions
-      set active_space_id = $2
-      where session_id = $1
-      returning *
+      set space_id = $2
+      where id = $1
+      returning
+        id,
+        user_id,
+        device_id,
+        created_at,
+        expires_at,
+        space_id,
+        revoked_at
     `,
     [session_id, space_id]
   );
