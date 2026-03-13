@@ -254,13 +254,41 @@ function createStepUpService({ stepUpRepo, now = () => new Date() }) {
   async function consumeCrossDeviceStepUp(stepUpSessionId) {
     ensureUuid(stepUpSessionId, 'step_up_session_id_invalid');
 
+    const existing = await stepUpRepo.findStepUpSessionById(stepUpSessionId);
+
+    if (!existing) {
+      throw new StepUpError('step_up_session_not_found', 404, 'step_up_session_not_found');
+    }
+
+    if (existing.state !== 'verified') {
+      throw new StepUpError('step_up_not_verified', 409, 'step_up_not_verified');
+    }
+
+    if (existing.invalidated_at) {
+      throw new StepUpError('step_up_invalidated', 409, 'step_up_invalidated');
+    }
+
+    if (existing.consumed_at) {
+      throw new StepUpError('step_up_already_consumed', 409, 'step_up_already_consumed');
+    }
+
+    if (existing.expires_at && new Date(existing.expires_at).getTime() <= Date.now()) {
+      await stepUpRepo.expireVerifiedOrPendingStepUpSession({
+        stepUpSessionId: existing.id,
+        eventId: crypto.randomUUID(),
+        reason: 'step_up_timeout'
+      });
+
+      throw new StepUpError('step_up_expired', 409, 'step_up_expired');
+    }
+
     const consumed = await stepUpRepo.consumeApprovedStepUpSession({
       stepUpSessionId,
       eventId: crypto.randomUUID()
     });
 
     if (!consumed) {
-      throw new StepUpError('step_up_not_approved', 409, 'step_up_not_approved');
+      throw new StepUpError('step_up_already_consumed', 409, 'step_up_already_consumed');
     }
 
     return {

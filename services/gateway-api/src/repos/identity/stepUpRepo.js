@@ -77,10 +77,53 @@ function createStepUpRepo({ identityDb }) {
           AND target_type = $3
           AND target_id = $4
           AND state = 'pending_verification'
+          AND invalidated_at IS NULL
         ORDER BY requested_at DESC, created_at DESC
         LIMIT 1
       `,
       [webSessionId, purpose, targetType, targetId]
+    );
+
+    return rows[0] || null;
+  }
+
+  async function findLatestStepUpForWebAction({ webSessionId, targetType, targetId }) {
+    const { rows } = await runQuery(
+      `
+        SELECT *
+        FROM step_up_sessions
+        WHERE web_session_id = $1
+          AND target_type = $2
+          AND target_id = $3
+        ORDER BY
+          confirmed_at DESC NULLS LAST,
+          requested_at DESC NULLS LAST,
+          created_at DESC
+        LIMIT 1
+      `,
+      [webSessionId, targetType, targetId]
+    );
+
+    return rows[0] || null;
+  }
+
+  async function findVerifiedStepUpForWebAction({ webSessionId, targetType, targetId }) {
+    const { rows } = await runQuery(
+      `
+        SELECT *
+        FROM step_up_sessions
+        WHERE web_session_id = $1
+          AND target_type = $2
+          AND target_id = $3
+          AND state = 'verified'
+          AND invalidated_at IS NULL
+        ORDER BY
+          confirmed_at DESC NULLS LAST,
+          requested_at DESC NULLS LAST,
+          created_at DESC
+        LIMIT 1
+      `,
+      [webSessionId, targetType, targetId]
     );
 
     return rows[0] || null;
@@ -129,7 +172,7 @@ function createStepUpRepo({ identityDb }) {
         eventType,
         fromState || null,
         toState || null,
-        actorType,
+        actorType || 'system',
         actorId || null,
         attemptNumber || null,
         deviceId || null,
@@ -214,20 +257,20 @@ function createStepUpRepo({ identityDb }) {
           RETURNING *
         `,
         [
-          input.stepUpSessionId,              // $1
-          input.webSessionId,                 // $2
-          input.userId,                       // $3
-          input.businessId,                   // $4
-          input.purpose,                      // $5
-          input.targetType,                   // $6
-          input.targetId,                     // $7
-          input.expiresAt,                    // $8
-          input.idempotencyKey || null,       // $9
-          input.correlationId || null,        // $10
-          input.requestId || null,            // $11
-          input.createdBy,                    // $12
-          input.updatedBy,                    // $13
-          input.deviceIdWeb || null           // $14
+          input.stepUpSessionId,
+          input.webSessionId,
+          input.userId,
+          input.businessId,
+          input.purpose,
+          input.targetType,
+          input.targetId,
+          input.expiresAt,
+          input.idempotencyKey || null,
+          input.correlationId || null,
+          input.requestId || null,
+          input.createdBy,
+          input.updatedBy,
+          input.deviceIdWeb || null
         ]
       );
 
@@ -259,12 +302,15 @@ function createStepUpRepo({ identityDb }) {
         eventType: 'verification_requested',
         fromState: 'pending_verification',
         toState: 'pending_verification',
-        actorType: 'system',
-        actorId: null,
+        actorType: 'user',
+        actorId: input.userId,
         deviceId: input.deviceIdWeb || null,
         metadata: {
-          verification_method: 'biometric',
-          reason: input.reason || null
+          source: 'web',
+          webSessionId: input.webSessionId,
+          businessId: input.businessId,
+          targetType: input.targetType,
+          targetId: input.targetId
         },
         idempotencyKey: input.requestedEventIdempotencyKey,
         correlationId: input.correlationId,
@@ -277,40 +323,37 @@ function createStepUpRepo({ identityDb }) {
 
   async function cancelPendingStepUpSession({ stepUpSessionId, eventId, reason, actorId }) {
     return withTransaction(async (client) => {
-      const current = await client.query(
+      const existingResult = await client.query(
         `
           SELECT *
           FROM step_up_sessions
           WHERE id = $1
-          LIMIT 1
+          FOR UPDATE
         `,
         [stepUpSessionId]
       );
 
-      if (current.rowCount === 0) {
+      const existing = existingResult.rows[0] || null;
+      if (!existing || existing.state !== 'pending_verification' || existing.invalidated_at) {
         return null;
       }
 
-      const existing = current.rows[0];
-
-      const { rows } = await client.query(
+      const updatedResult = await client.query(
         `
           UPDATE step_up_sessions
           SET
             state = 'cancelled',
             invalidated_at = NOW(),
             invalidated_reason = $2,
-            updated_at = NOW()
+            updated_at = NOW(),
+            updated_by = COALESCE($3, updated_by)
           WHERE id = $1
-            AND state = 'pending_verification'
           RETURNING *
         `,
-        [stepUpSessionId, reason || 'cancelled']
+        [stepUpSessionId, reason || 'superseded', actorId || null]
       );
 
-      if (!rows[0]) {
-        return null;
-      }
+      const updated = updatedResult.rows[0];
 
       await appendStepUpEvent(client, {
         id: eventId,
@@ -318,37 +361,196 @@ function createStepUpRepo({ identityDb }) {
         eventType: 'step_up_cancelled',
         fromState: existing.state,
         toState: 'cancelled',
-        actorType: 'system',
-        actorId: actorId || null,
-        deviceId: null,
-        metadata: { reason: reason || 'cancelled' },
-        idempotencyKey: `step_up_cancelled:${stepUpSessionId}:${eventId}`
+        actorType: 'user',
+        actorId: actorId || existing.user_id,
+        deviceId: existing.device_id_web || null,
+        metadata: {
+          reason: reason || 'superseded'
+        }
       });
 
-      return rows[0];
+      return updated;
+    });
+  }
+
+  async function expirePendingStepUpSession({ stepUpSessionId, eventId, reason }) {
+    return withTransaction(async (client) => {
+      const existingResult = await client.query(
+        `
+          SELECT *
+          FROM step_up_sessions
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [stepUpSessionId]
+      );
+
+      const existing = existingResult.rows[0] || null;
+      if (!existing || existing.state !== 'pending_verification' || existing.invalidated_at) {
+        return null;
+      }
+
+      const updatedResult = await client.query(
+        `
+          UPDATE step_up_sessions
+          SET
+            state = 'expired',
+            invalidated_at = NOW(),
+            invalidated_reason = $2,
+            updated_at = NOW()
+          WHERE id = $1
+          RETURNING *
+        `,
+        [stepUpSessionId, reason || 'step_up_timeout']
+      );
+
+      const updated = updatedResult.rows[0];
+
+      await appendStepUpEvent(client, {
+        id: eventId,
+        stepUpSessionId,
+        eventType: 'step_up_expired',
+        fromState: existing.state,
+        toState: 'expired',
+        actorType: 'system',
+        actorId: existing.user_id,
+        deviceId: existing.device_id_web || null,
+        metadata: {
+          reason: reason || 'step_up_timeout'
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  async function expireVerifiedOrPendingStepUpSession({ stepUpSessionId, eventId, reason }) {
+    return withTransaction(async (client) => {
+      const existingResult = await client.query(
+        `
+          SELECT *
+          FROM step_up_sessions
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [stepUpSessionId]
+      );
+
+      const existing = existingResult.rows[0] || null;
+      if (!existing || existing.invalidated_at) {
+        return null;
+      }
+
+      if (existing.state !== 'pending_verification' && existing.state !== 'verified') {
+        return null;
+      }
+
+      const updatedResult = await client.query(
+        `
+          UPDATE step_up_sessions
+          SET
+            state = 'expired',
+            invalidated_at = NOW(),
+            invalidated_reason = $2,
+            updated_at = NOW()
+          WHERE id = $1
+          RETURNING *
+        `,
+        [stepUpSessionId, reason || 'step_up_timeout']
+      );
+
+      const updated = updatedResult.rows[0];
+
+      await appendStepUpEvent(client, {
+        id: eventId,
+        stepUpSessionId,
+        eventType: 'step_up_expired',
+        fromState: existing.state,
+        toState: 'expired',
+        actorType: 'system',
+        actorId: existing.user_id,
+        deviceId: existing.device_id_mobile || existing.device_id_web || null,
+        metadata: {
+          reason: reason || 'step_up_timeout'
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  async function rejectStepUpSession({ stepUpSessionId, userId, deviceIdMobile, eventId, reason }) {
+    return withTransaction(async (client) => {
+      const existingResult = await client.query(
+        `
+          SELECT *
+          FROM step_up_sessions
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [stepUpSessionId]
+      );
+
+      const existing = existingResult.rows[0] || null;
+      if (!existing || existing.state !== 'pending_verification' || existing.invalidated_at) {
+        return null;
+      }
+
+      const updatedResult = await client.query(
+        `
+          UPDATE step_up_sessions
+          SET
+            state = 'rejected',
+            device_id_mobile = $2,
+            biometric_verified = FALSE,
+            invalidated_at = NOW(),
+            invalidated_reason = $3,
+            updated_at = NOW(),
+            updated_by = $4
+          WHERE id = $1
+          RETURNING *
+        `,
+        [stepUpSessionId, deviceIdMobile, reason || 'mobile_rejected', userId]
+      );
+
+      const updated = updatedResult.rows[0];
+
+      await appendStepUpEvent(client, {
+        id: eventId,
+        stepUpSessionId,
+        eventType: 'verification_rejected',
+        fromState: existing.state,
+        toState: 'rejected',
+        actorType: 'user',
+        actorId: userId,
+        deviceId: deviceIdMobile,
+        metadata: {
+          reason: reason || 'mobile_rejected'
+        }
+      });
+
+      return updated;
     });
   }
 
   async function approveStepUpSession({ stepUpSessionId, userId, deviceIdMobile, eventId }) {
     return withTransaction(async (client) => {
-      const current = await client.query(
+      const existingResult = await client.query(
         `
           SELECT *
           FROM step_up_sessions
           WHERE id = $1
-          LIMIT 1
+          FOR UPDATE
         `,
         [stepUpSessionId]
       );
 
-      if (current.rowCount === 0) {
+      const existing = existingResult.rows[0] || null;
+      if (!existing || existing.state !== 'pending_verification' || existing.invalidated_at) {
         return null;
       }
 
-      const existing = current.rows[0];
-      const nextAttempt = Number(existing.attempts_count || 0) + 1;
-
-      const { rows } = await client.query(
+      const updatedResult = await client.query(
         `
           UPDATE step_up_sessions
           SET
@@ -359,193 +561,81 @@ function createStepUpRepo({ identityDb }) {
             updated_at = NOW(),
             updated_by = $3
           WHERE id = $1
-            AND state = 'pending_verification'
-            AND (expires_at IS NULL OR expires_at > NOW())
           RETURNING *
         `,
-        [stepUpSessionId, deviceIdMobile || null, userId]
+        [stepUpSessionId, deviceIdMobile, userId]
       );
 
-      if (!rows[0]) {
-        return null;
-      }
+      const updated = updatedResult.rows[0];
 
       await appendStepUpEvent(client, {
         id: eventId,
         stepUpSessionId,
-        eventType: 'step_up_verified',
+        eventType: 'verification_confirmed',
         fromState: existing.state,
         toState: 'verified',
         actorType: 'user',
         actorId: userId,
-        attemptNumber: nextAttempt,
-        deviceId: deviceIdMobile || null,
+        deviceId: deviceIdMobile,
         metadata: {
-          verification_method: 'biometric'
-        },
-        idempotencyKey: `step_up_verified:${stepUpSessionId}:${eventId}`
+          biometricVerified: true
+        }
       });
 
-      return rows[0];
-    });
-  }
-
-  async function rejectStepUpSession({ stepUpSessionId, userId, deviceIdMobile, eventId, reason }) {
-    return withTransaction(async (client) => {
-      const current = await client.query(
-        `
-          SELECT *
-          FROM step_up_sessions
-          WHERE id = $1
-          LIMIT 1
-        `,
-        [stepUpSessionId]
-      );
-
-      if (current.rowCount === 0) {
-        return null;
-      }
-
-      const existing = current.rows[0];
-      const nextAttempt = Number(existing.attempts_count || 0) + 1;
-
-      const { rows } = await client.query(
-        `
-          UPDATE step_up_sessions
-          SET
-            state = 'cancelled',
-            device_id_mobile = $2,
-            invalidated_at = NOW(),
-            invalidated_reason = $3,
-            updated_at = NOW(),
-            updated_by = $4
-          WHERE id = $1
-            AND state = 'pending_verification'
-          RETURNING *
-        `,
-        [stepUpSessionId, deviceIdMobile || null, reason || 'mobile_rejected', userId]
-      );
-
-      if (!rows[0]) {
-        return null;
-      }
-
-      await appendStepUpEvent(client, {
-        id: eventId,
-        stepUpSessionId,
-        eventType: 'step_up_cancelled',
-        fromState: existing.state,
-        toState: 'cancelled',
-        actorType: 'user',
-        actorId: userId,
-        attemptNumber: nextAttempt,
-        deviceId: deviceIdMobile || null,
-        metadata: {
-          reason: reason || 'mobile_rejected'
-        },
-        idempotencyKey: `step_up_cancelled:${stepUpSessionId}:${eventId}`
-      });
-
-      return rows[0];
-    });
-  }
-
-  async function expirePendingStepUpSession({ stepUpSessionId, eventId, reason }) {
-    return withTransaction(async (client) => {
-      const current = await client.query(
-        `
-          SELECT *
-          FROM step_up_sessions
-          WHERE id = $1
-          LIMIT 1
-        `,
-        [stepUpSessionId]
-      );
-
-      if (current.rowCount === 0) {
-        return null;
-      }
-
-      const existing = current.rows[0];
-
-      const { rows } = await client.query(
-        `
-          UPDATE step_up_sessions
-          SET
-            state = 'expired',
-            invalidated_at = NOW(),
-            invalidated_reason = $2,
-            updated_at = NOW(),
-            updated_by = COALESCE(updated_by, created_by, user_id)
-          WHERE id = $1
-            AND state = 'pending_verification'
-            AND (expires_at IS NOT NULL AND expires_at <= NOW())
-          RETURNING *
-        `,
-        [stepUpSessionId, reason || 'step_up_timeout']
-      );
-
-      if (!rows[0]) {
-        return null;
-      }
-
-      await appendStepUpEvent(client, {
-        id: eventId,
-        stepUpSessionId,
-        eventType: 'step_up_expired',
-        fromState: existing.state,
-        toState: 'expired',
-        actorType: 'system',
-        actorId: null,
-        deviceId: null,
-        metadata: {
-          reason: reason || 'step_up_timeout'
-        },
-        idempotencyKey: `step_up_expired:${stepUpSessionId}:${eventId}`
-      });
-
-      return rows[0];
+      return updated;
     });
   }
 
   async function consumeApprovedStepUpSession({ stepUpSessionId, eventId }) {
+    return consumeVerifiedStepUpSession({ stepUpSessionId, eventId });
+  }
+
+  async function consumeVerifiedStepUpSession({ stepUpSessionId, eventId }) {
     return withTransaction(async (client) => {
-      const current = await client.query(
+      const existingResult = await client.query(
         `
           SELECT *
           FROM step_up_sessions
           WHERE id = $1
-          LIMIT 1
+          FOR UPDATE
         `,
         [stepUpSessionId]
       );
 
-      if (current.rowCount === 0) {
+      const existing = existingResult.rows[0] || null;
+      if (!existing || existing.state !== 'verified' || existing.invalidated_at || existing.consumed_at) {
         return null;
       }
 
-      const existing = current.rows[0];
-
-      const { rows } = await client.query(
+      const updatedResult = await client.query(
         `
           UPDATE step_up_sessions
           SET
             consumed_at = NOW(),
-            updated_at = NOW(),
-            updated_by = COALESCE(updated_by, created_by, user_id)
+            updated_at = NOW()
           WHERE id = $1
-            AND state = 'verified'
-            AND consumed_at IS NULL
           RETURNING *
         `,
         [stepUpSessionId]
       );
 
-      if (!rows[0]) {
-        return null;
-      }
+      const updated = updatedResult.rows[0];
 
-      return rows[0];
+      await appendStepUpEvent(client, {
+        id: eventId,
+        stepUpSessionId,
+        eventType: 'step_up_consumed',
+        fromState: existing.state,
+        toState: existing.state,
+        actorType: 'system',
+        actorId: existing.user_id,
+        deviceId: existing.device_id_mobile || existing.device_id_web || null,
+        metadata: {
+          consumedAt: updated.consumed_at
+        }
+      });
+
+      return updated;
     });
   }
 
@@ -553,12 +643,16 @@ function createStepUpRepo({ identityDb }) {
     findWebSessionForStepUp,
     findStepUpSessionById,
     findPendingStepUpForAction,
+    findLatestStepUpForWebAction,
+    findVerifiedStepUpForWebAction,
     createStepUpSession,
     cancelPendingStepUpSession,
-    approveStepUpSession,
-    rejectStepUpSession,
     expirePendingStepUpSession,
-    consumeApprovedStepUpSession
+    expireVerifiedOrPendingStepUpSession,
+    rejectStepUpSession,
+    approveStepUpSession,
+    consumeApprovedStepUpSession,
+    consumeVerifiedStepUpSession
   };
 }
 

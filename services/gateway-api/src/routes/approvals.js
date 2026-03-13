@@ -3,6 +3,8 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../infrastructure/financialDb');
+const requireVerifiedWebStepUp = require('../middleware/requireVerifiedWebStepUp');
+const webStepUpGuardService = require('../services/identity/webStepUpGuardService');
 
 const router = express.Router();
 
@@ -69,7 +71,7 @@ async function emitApprovalInboxNotification({ spaceId, intentId, approvalId, st
       intent_id: intentId,
       approval_id: approvalId,
       status,
-      correlation_id: correlationId,
+      correlation_id: correlationId
     };
 
     if (typeof fetch !== 'function') return;
@@ -78,134 +80,157 @@ async function emitApprovalInboxNotification({ spaceId, intentId, approvalId, st
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Correlation-Id': correlationId,
+        'X-Correlation-Id': correlationId
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
   } catch (_) {
     // best-effort
   }
 }
 
-router.post('/approvals/:intent_id/vote', async (req, res, next) => {
-  const spaceId = getSpaceId(req);
-  const memberId = getMemberId(req);
-  const correlationId = getCorrelationId(req);
-  const intentId = req.params.intent_id;
-
-  try {
-    if (!spaceId) {
-      return res.status(400).json({ error: 'invalid_request', message: 'X-Space-Id header is required' });
-    }
-    if (!isUuidLike(intentId)) {
-      return res.status(400).json({ error: 'invalid_request', message: 'intent_id must be uuid' });
-    }
-    if (!isUuidLike(memberId)) {
-      return res.status(400).json({ error: 'invalid_request', message: 'X-Member-Id header is required (uuid)' });
-    }
-
-    const { vote, comment } = req.body || {};
-    if (vote !== 'approve' && vote !== 'reject') {
-      return res.status(400).json({ error: 'invalid_request', message: "vote must be 'approve' or 'reject'" });
-    }
-
-    await db.query('BEGIN');
+router.post(
+  '/approvals/:intent_id/vote',
+  requireVerifiedWebStepUp({
+    getTargetType: () => 'payment_intent_approve',
+    getTargetId: (req) => req.params.intent_id
+  }),
+  async (req, res, next) => {
+    const spaceId = getSpaceId(req);
+    const memberId = getMemberId(req);
+    const correlationId = getCorrelationId(req);
+    const intentId = req.params.intent_id;
 
     try {
-      const latestIntentState = await getLatestIntentState(db, intentId);
-      if (latestIntentState !== 'pending_approval') {
-        await db.query('ROLLBACK');
-        return res.status(409).json({
-          error: 'invalid_intent_state',
-          message: `Intent must be pending_approval to vote (current=${latestIntentState || 'unknown'})`,
-        });
+      if (!spaceId) {
+        return res.status(400).json({ error: 'invalid_request', message: 'X-Space-Id header is required' });
+      }
+      if (!isUuidLike(intentId)) {
+        return res.status(400).json({ error: 'invalid_request', message: 'intent_id must be uuid' });
+      }
+      if (!isUuidLike(memberId)) {
+        return res.status(400).json({ error: 'invalid_request', message: 'X-Member-Id header is required (uuid)' });
       }
 
-      const a = await db.query(
-        `
-        SELECT id, status, business_id
-        FROM payment_approvals
-        WHERE payment_intent_id = $1 AND space_id = $2
-        LIMIT 1
-        FOR UPDATE
-        `,
-        [intentId, spaceId]
-      );
-
-      if (a.rowCount === 0) {
-        await db.query('ROLLBACK');
-        return res.status(404).json({ error: 'not_found', message: 'No approval found for this intent/space' });
+      const { vote, comment } = req.body || {};
+      if (vote !== 'approve' && vote !== 'reject') {
+        return res.status(400).json({ error: 'invalid_request', message: "vote must be 'approve' or 'reject'" });
       }
 
-      const approval = a.rows[0];
+      await db.query('BEGIN');
 
-      if (approval.status !== 'pending') {
-        await db.query('ROLLBACK');
-        return res.status(409).json({
-          error: 'approval_not_pending',
-          message: `Approval is already ${approval.status}`,
-        });
-      }
-
-      const ins = await db.query(
-        `
-        INSERT INTO payment_approval_votes (
-          id, approval_id, space_id, business_id, member_id, vote, comment, metadata
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
-        ON CONFLICT (approval_id, member_id) DO NOTHING
-        RETURNING id
-        `,
-        [
-          uuid(),
-          approval.id,
-          spaceId,
-          approval.business_id,
-          memberId,
-          vote,
-          typeof comment === 'string' ? comment : null,
-          JSON.stringify({ correlation_id: correlationId }),
-        ]
-      );
-
-      const alreadyVoted = ins.rowCount === 0;
-
-      const a2 = await db.query(
-        `
-        SELECT id, status, approvals_count, rejections_count, required_approvals
-        FROM payment_approvals
-        WHERE id = $1
-        `,
-        [approval.id]
-      );
-
-      const updated = a2.rows[0];
+      let updated;
+      let alreadyVoted;
       let syncedState = null;
 
-      if (updated.status === 'approved' || updated.status === 'rejected') {
-        const targetState = updated.status === 'approved' ? 'approved' : 'rejected';
-        const latest2 = await getLatestIntentState(db, intentId);
-
-        if (latest2 !== targetState) {
-          await db.query(
-            `
-            INSERT INTO payment_intent_states (
-              id,
-              payment_intent_id,
-              state,
-              correlation_id,
-              created_at,
-              updated_at
-            )
-            VALUES ($1,$2,$3,$4,clock_timestamp(),clock_timestamp())
-            `,
-            [uuid(), intentId, targetState, correlationId]
-          );
-          syncedState = targetState;
+      try {
+        const latestIntentState = await getLatestIntentState(db, intentId);
+        if (latestIntentState !== 'pending_approval') {
+          await db.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'invalid_intent_state',
+            message: `Intent must be pending_approval to vote (current=${latestIntentState || 'unknown'})`
+          });
         }
+
+        const a = await db.query(
+          `
+          SELECT id, status, business_id
+          FROM payment_approvals
+          WHERE payment_intent_id = $1 AND space_id = $2
+          LIMIT 1
+          FOR UPDATE
+          `,
+          [intentId, spaceId]
+        );
+
+        if (a.rowCount === 0) {
+          await db.query('ROLLBACK');
+          return res.status(404).json({ error: 'not_found', message: 'No approval found for this intent/space' });
+        }
+
+        const approval = a.rows[0];
+
+        if (approval.status !== 'pending') {
+          await db.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'approval_not_pending',
+            message: `Approval is already ${approval.status}`
+          });
+        }
+
+        const ins = await db.query(
+          `
+          INSERT INTO payment_approval_votes (
+            id, approval_id, space_id, business_id, member_id, vote, comment, metadata
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+          ON CONFLICT (approval_id, member_id) DO NOTHING
+          RETURNING id
+          `,
+          [
+            uuid(),
+            approval.id,
+            spaceId,
+            approval.business_id,
+            memberId,
+            vote,
+            typeof comment === 'string' ? comment : null,
+            JSON.stringify({
+              correlation_id: correlationId,
+              step_up_session_id: req.stepUp.stepUpSessionId,
+              web_session_id: req.stepUp.webSessionId,
+              step_up_target_type: req.stepUp.targetType,
+              step_up_target_id: req.stepUp.targetId
+            })
+          ]
+        );
+
+        alreadyVoted = ins.rowCount === 0;
+
+        const a2 = await db.query(
+          `
+          SELECT id, status, approvals_count, rejections_count, required_approvals
+          FROM payment_approvals
+          WHERE id = $1
+          `,
+          [approval.id]
+        );
+
+        updated = a2.rows[0];
+
+        if (updated.status === 'approved' || updated.status === 'rejected') {
+          const targetState = updated.status === 'approved' ? 'approved' : 'rejected';
+          const latest2 = await getLatestIntentState(db, intentId);
+
+          if (latest2 !== targetState) {
+            await db.query(
+              `
+              INSERT INTO payment_intent_states (
+                id,
+                payment_intent_id,
+                state,
+                correlation_id,
+                created_at,
+                updated_at
+              )
+              VALUES ($1,$2,$3,$4,clock_timestamp(),clock_timestamp())
+              `,
+              [uuid(), intentId, targetState, correlationId]
+            );
+            syncedState = targetState;
+          }
+        }
+
+        await db.query('COMMIT');
+      } catch (e) {
+        try { await db.query('ROLLBACK'); } catch (_) {}
+        throw e;
       }
 
-      await db.query('COMMIT');
+      await webStepUpGuardService.consumeVerifiedStepUp({
+        stepUpSessionId: req.stepUp.stepUpSessionId
+      });
 
       if (updated.status === 'approved' || updated.status === 'rejected') {
         await emitApprovalInboxNotification({
@@ -213,7 +238,7 @@ router.post('/approvals/:intent_id/vote', async (req, res, next) => {
           intentId,
           approvalId: updated.id,
           status: updated.status,
-          correlationId,
+          correlationId
         });
       }
 
@@ -226,17 +251,20 @@ router.post('/approvals/:intent_id/vote', async (req, res, next) => {
           status: updated.status,
           approvals_count: updated.approvals_count,
           rejections_count: updated.rejections_count,
-          required_approvals: updated.required_approvals,
+          required_approvals: updated.required_approvals
         },
-        correlation_id: correlationId,
+        step_up: {
+          step_up_session_id: req.stepUp.stepUpSessionId,
+          web_session_id: req.stepUp.webSessionId,
+          target_type: req.stepUp.targetType,
+          target_id: req.stepUp.targetId
+        },
+        correlation_id: correlationId
       });
-    } catch (e) {
-      try { await db.query('ROLLBACK'); } catch (_) {}
-      throw e;
+    } catch (err) {
+      return next(err);
     }
-  } catch (err) {
-    return next(err);
   }
-});
+);
 
 module.exports = router;

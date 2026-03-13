@@ -4,10 +4,12 @@ const express = require('express');
 
 const requireSession = require('../middleware/requireSession');
 const requireBusinessMembership = require('../middleware/requireBusinessMembership');
+const requireVerifiedWebStepUp = require('../middleware/requireVerifiedWebStepUp');
+const webStepUpGuardService = require('../services/identity/webStepUpGuardService');
 
 const kybRepo = require('../repos/identity/kybRepo');
-const spacesRepo = require('../repos/identity/spacesRepo'); // ajusta
-const sessionsRepo = require('../repos/identity/sessionsRepo'); // para switch space
+const spacesRepo = require('../repos/identity/spacesRepo');
+const sessionsRepo = require('../repos/identity/sessionsRepo');
 
 const router = express.Router();
 
@@ -72,28 +74,67 @@ router.post('/kyb/verify', requireSession, requireBusinessMembership({ requireRo
   }
 });
 
+async function ensureSpaceMembershipForSwitch(req, res, next) {
+  try {
+    const actor_user_id = req.user.id;
+    const { space_id } = req.body || {};
+
+    if (!space_id) {
+      return res.status(400).json({ error: 'missing_space_id' });
+    }
+
+    const ok = await spacesRepo.hasUserAccessToSpace({ user_id: actor_user_id, space_id });
+    if (!ok) {
+      return res.status(403).json({ error: 'space_access_denied' });
+    }
+
+    return next();
+  } catch (e) {
+    return next(e);
+  }
+}
+
 /**
  * POST /public/v1/identity/spaces/switch
  * body: { space_id }
  */
-router.post('/spaces/switch', requireSession, async (req, res, next) => {
-  try {
-    const actor_user_id = req.user.id;
-    const session_id = req.session.session_id || req.header('x-session-id');
-    const { space_id } = req.body || {};
+router.post(
+  '/spaces/switch',
+  requireSession,
+  ensureSpaceMembershipForSwitch,
+  requireVerifiedWebStepUp({
+    getTargetType: () => 'space_switch',
+    getTargetId: (req) => req.body.space_id
+  }),
+  async (req, res, next) => {
+    try {
+      const actor_user_id = req.user.id;
+      const session_id = req.session.session_id || req.header('x-session-id');
+      const { space_id } = req.body || {};
 
-    if (!space_id) return res.status(400).json({ error: 'missing_space_id' });
+      if (!space_id) return res.status(400).json({ error: 'missing_space_id' });
 
-    // Validar que el usuario pertenece a ese space
-    const ok = await spacesRepo.userHasSpace({ user_id: actor_user_id, space_id });
-    if (!ok) return res.status(403).json({ error: 'space_access_denied' });
+      await sessionsRepo.setActiveSpace({ session_id, space_id });
 
-    await sessionsRepo.setActiveSpace({ session_id, space_id });
+      await webStepUpGuardService.consumeVerifiedStepUp({
+        stepUpSessionId: req.stepUp.stepUpSessionId
+      });
 
-    return res.status(200).json({ ok: true, active_space_id: space_id });
-  } catch (e) {
-    return next(e);
+      return res.status(200).json({
+        ok: true,
+        active_space_id: space_id,
+        step_up: {
+          step_up_session_id: req.stepUp.stepUpSessionId,
+          web_session_id: req.stepUp.webSessionId,
+          target_type: req.stepUp.targetType,
+          target_id: req.stepUp.targetId
+        },
+        actor_user_id
+      });
+    } catch (e) {
+      return next(e);
+    }
   }
-});
+);
 
 module.exports = router;
