@@ -184,17 +184,26 @@ async function confirmSessionRequest({
 
     if (existing.status === 'revoked') {
       await db.query('commit');
-      return { conflict: 'revoked', session: mapSession(existing) };
+      return {
+        conflict: 'revoked',
+        session: mapSession(existing)
+      };
     }
 
     if (existing.status === 'expired') {
       await db.query('commit');
-      return { conflict: 'expired', session: mapSession(existing) };
+      return {
+        conflict: 'expired',
+        session: mapSession(existing)
+      };
     }
 
     if (existing.status === 'active') {
       await db.query('commit');
-      return { alreadyActive: true, session: mapSession(existing) };
+      return {
+        alreadyActive: true,
+        session: mapSession(existing)
+      };
     }
 
     const updatedResult = await db.query(
@@ -245,7 +254,10 @@ async function confirmSessionRequest({
 
     await db.query('commit');
 
-    return { alreadyActive: false, session: updated };
+    return {
+      alreadyActive: false,
+      session: updated
+    };
   } catch (error) {
     await db.query('rollback');
     throw error;
