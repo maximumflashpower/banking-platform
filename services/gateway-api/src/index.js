@@ -37,11 +37,25 @@ const internalReconciliationRunDailyRoutes = require('./routes/internal/reconcil
 const internalReconciliationActionsRoutes = require('./routes/internal/reconciliationActions');
 const internalStepUpStartRoutes = require('./routes/internal/stepUpStart');
 
+const webSessionSecurityService = require('./services/identity/webSessionSecurityService');
+
 const app = express();
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
+
+app.use(async (req, _res, next) => {
+  try {
+    if (req.path.startsWith('/public/v1/web/')) {
+      await webSessionSecurityService.expireInactiveSessions();
+    }
+  } catch (_err) {
+    // best effort
+  }
+
+  next();
+});
 
 app.get('/health', (_req, res) => {
   res.status(200).json({
@@ -51,9 +65,6 @@ app.get('/health', (_req, res) => {
   });
 });
 
-/**
- * Public API
- */
 app.use('/public/v1/identity', identityRoutes);
 app.use('/public/v1/finance/payment-intents', paymentIntentsRoutes);
 app.use('/public/v1/finance/approvals', approvalsRoutes);
@@ -62,9 +73,6 @@ app.use('/public/v1/cards/disputes', cardsDisputesRoutes);
 app.use('/public/v1/auth/step-up', stepUpRoutes);
 app.use('/public/v1/web', webQrSessionsRoutes);
 
-/**
- * Internal API
- */
 app.use('/internal/v1/businesses', internalBusinessesRoutes);
 app.use('/internal/v1/case-management/cases', internalCasesRoutes);
 app.use('/internal/v1/case-management/cases', internalCaseAssignmentsRoutes);
@@ -99,66 +107,29 @@ app.use((req, res) => {
 });
 
 app.use((err, _req, res, _next) => {
-  const status = Number.isInteger(err?.status) ? err.status : 500;
-  const code = err?.code || (status >= 500 ? 'internal_error' : 'request_error');
-  const message = status >= 500
-    ? 'Internal server error'
-    : (err?.message || 'Request failed');
+  console.error('[gateway-api] unhandled error', err);
 
-  if (status >= 500) {
-    console.error('[gateway-api] unhandled error', err);
-  }
+  const status = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+  const error = err?.code || 'internal_error';
+  const message = status >= 500 ? 'Internal server error' : (err?.message || 'Request failed');
 
-  const body = {
-    error: code,
-    message
-  };
-
-  if (err?.details) {
-    body.details = err.details;
-  }
-
-  res.status(status).json(body);
+  res.status(status).json({ error, message });
 });
 
 const port = Number(process.env.PORT || 3000);
 const server = http.createServer(app);
 
-let shuttingDown = false;
-
-function shutdown(signal) {
-  if (shuttingDown) {
-    return;
-  }
-
-  shuttingDown = true;
-  console.log(`[gateway-api] received ${signal}, starting graceful shutdown`);
-
-  server.close((err) => {
-    if (err) {
-      console.error('[gateway-api] error during server shutdown', err);
-      process.exit(1);
-      return;
-    }
-
-    console.log('[gateway-api] shutdown complete');
-    process.exit(0);
-  });
-
-  setTimeout(() => {
-    console.error('[gateway-api] forced shutdown after timeout');
-    process.exit(1);
-  }, 10000).unref();
-}
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
 server.listen(port, () => {
   console.log(`[gateway-api] listening on port ${port}`);
 });
 
-module.exports = {
-  app,
-  server
-};
+function shutdown(signal) {
+  console.log(`[gateway-api] received ${signal}, starting graceful shutdown`);
+  server.close(() => {
+    console.log('[gateway-api] shutdown complete');
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
