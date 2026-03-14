@@ -1,7 +1,9 @@
 import React from "react";
 import { createQrSession, getWebSessionStatus } from "../shared/api/auth.js";
+import { useSession } from "../shared/session/SessionProvider.jsx";
 
 export default function LoginQrPage() {
+  const { session, setSession } = useSession();
   const [qr, setQr] = React.useState(null);
   const [error, setError] = React.useState(null);
 
@@ -10,13 +12,23 @@ export default function LoginQrPage() {
 
     (async () => {
       try {
-        const data = await createQrSession();
+        const deviceIdWeb = session?.deviceIdWeb || "web-companion-stage7e";
+        const data = await createQrSession(deviceIdWeb);
         setQr(data);
 
         timer = setInterval(async () => {
           try {
-            const status = await getWebSessionStatus();
-            if (status?.authenticated) {
+            const status = await getWebSessionStatus(data.sessionRequestId);
+
+            if (status?.status === "active" && status?.sessionId) {
+              setSession((prev) => ({
+                ...prev,
+                authenticated: true,
+                webSessionId: status.sessionId,
+                sessionRequestId: data.sessionRequestId,
+                activeSpaceId: status.activeSpaceId || prev.activeSpaceId,
+              }));
+
               window.location.assign("/personal");
             }
           } catch (_) {}
@@ -29,27 +41,21 @@ export default function LoginQrPage() {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, []);
+  }, [session?.deviceIdWeb, setSession]);
 
   return (
     <div className="wc-login">
       <h1>Web Companion Login</h1>
+
       {error && <pre>{JSON.stringify(error, null, 2)}</pre>}
 
       {!qr && !error && <div>Creating QR session…</div>}
 
       {qr && (
-        <>
-          <div className="wc-card">
-            <div>Scan with mobile to approve web session.</div>
-            {qr.qr_url && (
-              <div className="wc-qr-wrap">
-                <img src={qr.qr_url} alt="Web companion QR" className="wc-qr" />
-              </div>
-            )}
-            <pre>{JSON.stringify(qr, null, 2)}</pre>
-          </div>
-        </>
+        <div className="wc-card">
+          <div>Scan with mobile to approve web session.</div>
+          <pre>{JSON.stringify(qr, null, 2)}</pre>
+        </div>
       )}
     </div>
   );
