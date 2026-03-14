@@ -90,7 +90,7 @@ async function emitApprovalInboxNotification({ spaceId, intentId, approvalId, st
 }
 
 router.post(
-  '/approvals/:intent_id/vote',
+  '/:intent_id/vote',
   requireVerifiedWebStepUp({
     getTargetType: () => 'payment_intent_approve',
     getTargetId: (req) => req.params.intent_id

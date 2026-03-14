@@ -18,15 +18,13 @@ async function listForUser(userId) {
   const result = await runQuery(
     `
       select
-        b.business_id as space_id,
-        b.legal_name as name,
-        bm.role_key,
-        bm.membership_status
-      from business_members bm
-      join kyb_businesses b
-        on b.business_id = bm.business_id
-      where bm.user_id = $1
-      order by b.legal_name asc, b.business_id asc
+        s.id as space_id,
+        s.id as name,
+        s.type,
+        s.owner_user_id
+      from spaces s
+      where s.owner_user_id = $1
+      order by s.created_at asc, s.id asc
     `,
     [userId]
   );
@@ -38,15 +36,13 @@ async function getByIdForUser({ user_id, space_id }) {
   const result = await runQuery(
     `
       select
-        b.business_id as space_id,
-        b.legal_name as name,
-        bm.role_key,
-        bm.membership_status
-      from business_members bm
-      join kyb_businesses b
-        on b.business_id = bm.business_id
-      where bm.user_id = $1
-        and b.business_id = $2
+        s.id as space_id,
+        s.id as name,
+        s.type,
+        s.owner_user_id
+      from spaces s
+      where s.owner_user_id = $1
+        and s.id = $2
       limit 1
     `,
     [user_id, space_id]
