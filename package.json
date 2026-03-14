@@ -8,10 +8,13 @@
     "start": "node services/gateway-api/src/index.js",
     "api": "node services/gateway-api/src/index.js",
     "cards:outbox-publisher": "node services/cards/src/outbox/runCardsOutboxPublisher.js",
-    "cards:webhook-processor": "node services/cards/src/settlements/runCardsWebhookProcessor.js"
+    "cards:webhook-processor": "node services/cards/src/settlements/runCardsWebhookProcessor.js",
+    "web-companion:dev": "npm --prefix apps/web-companion run dev",
+    "web-companion:build": "npm --prefix apps/web-companion run build",
+    "web-companion:preview": "npm --prefix apps/web-companion run preview"
   },
   "dependencies": {
-  "dotenv": "^17.3.1",
-  "pg": "^8.20.0"
+    "dotenv": "^17.3.1",
+    "pg": "^8.20.0"
   }
 }

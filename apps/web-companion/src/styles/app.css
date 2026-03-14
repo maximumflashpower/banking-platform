@@ -1,0 +1,107 @@
+:root {
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f6f7f9;
+  color: #111;
+}
+
+.wc-shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.wc-nav {
+  background: #10151c;
+  color: #fff;
+  padding: 20px;
+}
+
+.wc-nav-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.wc-nav-group-label {
+  font-size: 12px;
+  opacity: 0.7;
+  margin: 20px 0 8px;
+  text-transform: uppercase;
+}
+
+.wc-nav-item {
+  display: block;
+  color: #d8e0ea;
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.wc-nav-item.is-active {
+  background: #1f2b38;
+  color: #fff;
+}
+
+.wc-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.wc-header {
+  background: #fff;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wc-content {
+  padding: 24px;
+}
+
+.wc-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.wc-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.wc-banner {
+  background: #fff7d6;
+  border: 1px solid #f0df8a;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.wc-empty {
+  color: #666;
+  padding: 12px 0;
+}
+
+.wc-centered,
+.wc-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.wc-qr {
+  max-width: 280px;
+  display: block;
+}
