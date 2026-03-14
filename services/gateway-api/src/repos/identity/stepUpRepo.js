@@ -520,7 +520,7 @@ async function appendStepUpEvent(client, {
       await appendStepUpEvent(client, {
         id: eventId,
         stepUpSessionId,
-        eventType: 'verification_rejected',
+        eventType: 'verification_failed',
         fromState: existing.state,
         toState: 'rejected',
         actorType: 'user',
@@ -573,7 +573,7 @@ async function appendStepUpEvent(client, {
       await appendStepUpEvent(client, {
         id: eventId,
         stepUpSessionId,
-        eventType: 'verification_confirmed',
+        eventType: 'step_up_verified',
         fromState: existing.state,
         toState: 'verified',
         actorType: 'user',
