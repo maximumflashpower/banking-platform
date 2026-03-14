@@ -129,60 +129,62 @@ function createStepUpRepo({ identityDb }) {
     return rows[0] || null;
   }
 
-  async function appendStepUpEvent(client, {
-    id,
-    stepUpSessionId,
-    eventType,
-    fromState,
-    toState,
-    actorType,
-    actorId,
-    attemptNumber,
-    deviceId,
-    metadata,
-    idempotencyKey,
-    correlationId,
-    requestId
-  }) {
-    await client.query(
-      `
-        INSERT INTO step_up_events (
-          id,
-          step_up_session_id,
-          event_type,
-          from_state,
-          to_state,
-          actor_type,
-          actor_id,
-          attempt_number,
-          device_id,
-          metadata,
-          idempotency_key,
-          correlation_id,
-          request_id,
-          created_at
-        )
-        VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, NOW()
-        )
-      `,
-      [
+async function appendStepUpEvent(client, {
+  id,
+  stepUpSessionId,
+  eventType,
+  fromState,
+  toState,
+  actorType,
+  actorId,
+  attemptNumber,
+  deviceId,
+  metadata,
+  idempotencyKey,
+  correlationId,
+  requestId
+}) {
+  const effectiveIdempotencyKey = idempotencyKey || `${eventType}:${stepUpSessionId}:${id}`;
+
+  await client.query(
+    `
+      INSERT INTO step_up_events (
         id,
-        stepUpSessionId,
-        eventType,
-        fromState || null,
-        toState || null,
-        actorType || 'system',
-        actorId || null,
-        attemptNumber || null,
-        deviceId || null,
-        JSON.stringify(metadata || {}),
-        idempotencyKey || null,
-        correlationId || null,
-        requestId || null
-      ]
-    );
-  }
+        step_up_session_id,
+        event_type,
+        from_state,
+        to_state,
+        actor_type,
+        actor_id,
+        attempt_number,
+        device_id,
+        metadata,
+        idempotency_key,
+        correlation_id,
+        request_id,
+        created_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, NOW()
+      )
+    `,
+    [
+      id,
+      stepUpSessionId,
+      eventType,
+      fromState || null,
+      toState || null,
+      actorType || 'system',
+      actorId || null,
+      attemptNumber || null,
+      deviceId || null,
+      JSON.stringify(metadata || {}),
+      effectiveIdempotencyKey,
+      correlationId || null,
+      requestId || null
+    ]
+  );
+}
 
   async function createStepUpSession(input) {
     return withTransaction(async (client) => {
