@@ -40,6 +40,7 @@ const internalReconciliationRunsRoutes = require('./routes/internal/reconciliati
 const internalReconciliationRunDailyRoutes = require('./routes/internal/reconciliationRunDaily');
 const internalReconciliationActionsRoutes = require('./routes/internal/reconciliationActions');
 const internalStepUpStartRoutes = require('./routes/internal/stepUpStart');
+const internalAuditEvidenceRoutes = require('./routes/internal/auditEvidence');
 
 const webSessionSecurityService = require('./services/identity/webSessionSecurityService');
 
@@ -123,6 +124,7 @@ app.use('/internal/v1/reconciliation/runs', internalReconciliationRunsRoutes);
 app.use('/internal/v1/reconciliation/runs', internalReconciliationRunDailyRoutes);
 app.use('/internal/v1/reconciliation/actions', internalReconciliationActionsRoutes);
 app.use('/internal/v1/step-up', internalStepUpStartRoutes);
+app.use('/internal/v1', internalAuditEvidenceRoutes);
 
 app.use((req, res) => {
   logger.warn('route_not_found', {

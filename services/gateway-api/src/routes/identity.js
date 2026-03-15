@@ -10,6 +10,7 @@ const webStepUpGuardService = require('../services/identity/webStepUpGuardServic
 const kybRepo = require('../repos/identity/kybRepo');
 const spacesRepo = require('../repos/identity/spacesRepo');
 const sessionsRepo = require('../repos/identity/sessionsRepo');
+const { writeAuditEvent } = require('../services/audit/auditService');
 
 const router = express.Router();
 
@@ -118,6 +119,25 @@ router.post(
 
       await webStepUpGuardService.consumeVerifiedStepUp({
         stepUpSessionId: req.stepUp.stepUpSessionId
+      });
+
+      await writeAuditEvent(req, {
+        event_category: 'space_switch',
+        event_type: 'space.switch.completed',
+        action: 'switch',
+        result: 'success',
+        actor_user_id,
+        actor_session_id: session_id,
+        actor_space_id: space_id,
+        target_type: 'space',
+        target_id: space_id,
+        http_status: 200,
+        metadata: {
+          step_up_session_id: req.stepUp.stepUpSessionId,
+          web_session_id: req.stepUp.webSessionId,
+          target_type: req.stepUp.targetType,
+          target_id: req.stepUp.targetId
+        }
       });
 
       return res.status(200).json({
