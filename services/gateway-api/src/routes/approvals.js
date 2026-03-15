@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const db = require('../infrastructure/financialDb');
 const requireVerifiedWebStepUp = require('../middleware/requireVerifiedWebStepUp');
 const webStepUpGuardService = require('../services/identity/webStepUpGuardService');
+const { writeAuditEvent } = require('../services/audit/auditService');
 
 const router = express.Router();
 
@@ -230,6 +231,31 @@ router.post(
 
       await webStepUpGuardService.consumeVerifiedStepUp({
         stepUpSessionId: req.stepUp.stepUpSessionId
+      });
+
+      await writeAuditEvent(req, {
+        event_category: 'approval',
+        event_type: 'approval.vote.recorded',
+        action: 'vote',
+        result: updated.status === 'approved' ? 'success' : updated.status,
+        correlation_id: correlationId,
+        actor_membership_id: memberId,
+        actor_space_id: spaceId,
+        target_type: 'payment_intent',
+        target_id: intentId,
+        http_status: 200,
+        metadata: {
+          approval_id: updated.id,
+          vote,
+          already_voted: alreadyVoted,
+          synced_intent_state: syncedState,
+          step_up_session_id: req.stepUp.stepUpSessionId,
+          web_session_id: req.stepUp.webSessionId,
+          approval_status: updated.status,
+          approvals_count: updated.approvals_count,
+          rejections_count: updated.rejections_count,
+          required_approvals: updated.required_approvals
+        }
       });
 
       if (updated.status === 'approved' || updated.status === 'rejected') {
