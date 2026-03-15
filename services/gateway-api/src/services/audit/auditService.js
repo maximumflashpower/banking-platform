@@ -20,9 +20,12 @@ function buildAuditEvent(req, payload) {
   return {
     request_id: req.requestContext?.requestId || null,
     correlation_id: payload.correlation_id || req.requestContext?.correlationId || null,
-    actor_user_id: payload.actor_user_id || req.user?.id || req.session?.user_id || req.requestContext?.userId || null,
-    actor_session_id: payload.actor_session_id || req.session?.session_id || req.requestContext?.sessionId || null,
-    actor_space_id: payload.actor_space_id || req.session?.active_space_id || req.requestContext?.spaceId || null,
+    actor_user_id:
+      payload.actor_user_id || req.user?.id || req.session?.user_id || req.requestContext?.userId || null,
+    actor_session_id:
+      payload.actor_session_id || req.session?.session_id || req.requestContext?.sessionId || null,
+    actor_space_id:
+      payload.actor_space_id || req.session?.active_space_id || req.requestContext?.spaceId || null,
     actor_membership_id: payload.actor_membership_id || null,
     event_category: payload.event_category,
     event_type: payload.event_type,
