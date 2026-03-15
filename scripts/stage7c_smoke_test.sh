@@ -148,10 +148,12 @@ request_json "POST" "$BASE_URL/public/v1/auth/step-up/confirm" \
 assert_status "202"
 echo "$RESPONSE_BODY"
 
-print_section "step-up status"
-request_json "GET" "$BASE_URL/public/v1/auth/step-up/$STEP_UP_SESSION_ID" ""
-assert_status "200"
-echo "$RESPONSE_BODY"
+STEP_UP_STATUS="$(printf '%s' "$RESPONSE_BODY" | json_get status)"
+if [[ "$STEP_UP_STATUS" != "verified" ]]; then
+  echo "Estado inesperado de step-up confirm: $STEP_UP_STATUS"
+  echo "$RESPONSE_BODY"
+  exit 1
+fi
 
 print_section "resultado final"
 echo "OK Stage 7C validado"
