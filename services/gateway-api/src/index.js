@@ -3,6 +3,10 @@
 const http = require('http');
 const express = require('express');
 
+const requestContext = require('./middleware/requestContext');
+const requestLogging = require('./middleware/requestLogging');
+const logger = require('./infrastructure/logger');
+
 const identityRoutes = require('./routes/identity');
 const paymentIntentsRoutes = require('./routes/paymentIntents');
 const approvalsRoutes = require('./routes/approvals');
@@ -45,23 +49,44 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
+/**
+ * 8A observability foundation:
+ * apply request context + structured request logging as early as possible
+ * so every route, including /health and 404s, gets traced.
+ */
+app.use(requestContext);
+app.use(requestLogging);
+
+/**
+ * Best-effort background security maintenance for web session routes.
+ * Keep this after request context so any future logs can reuse request ids.
+ */
 app.use(async (req, _res, next) => {
   try {
     if (req.path.startsWith('/public/v1/web/')) {
       await webSessionSecurityService.expireInactiveSessions();
     }
-  } catch (_err) {
-    // best effort
+  } catch (err) {
+    logger.warn('expire_inactive_sessions_failed', {
+      request_id: req.requestContext?.requestId || null,
+      correlation_id: req.requestContext?.correlationId || null,
+      method: req.method,
+      path: req.originalUrl || req.url,
+      error_code: err?.code || null,
+      error_message: err?.message || 'expireInactiveSessions failed'
+    });
   }
 
   next();
 });
 
-app.get('/health', (_req, res) => {
+app.get('/health', (req, res) => {
   res.status(200).json({
     ok: true,
     service: 'gateway-api',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    request_id: req.requestContext?.requestId || null,
+    correlation_id: req.requestContext?.correlationId || null
   });
 });
 
@@ -100,18 +125,40 @@ app.use('/internal/v1/reconciliation/actions', internalReconciliationActionsRout
 app.use('/internal/v1/step-up', internalStepUpStartRoutes);
 
 app.use((req, res) => {
+  logger.warn('route_not_found', {
+    request_id: req.requestContext?.requestId || null,
+    correlation_id: req.requestContext?.correlationId || null,
+    method: req.method,
+    path: req.originalUrl || req.url
+  });
+
   res.status(404).json({
     error: 'not_found',
     message: `Route not found: ${req.method} ${req.originalUrl}`
   });
 });
 
-app.use((err, _req, res, _next) => {
-  console.error('[gateway-api] unhandled error', err);
+app.use((err, req, res, _next) => {
+  const status = Number.isInteger(err?.statusCode)
+    ? err.statusCode
+    : Number.isInteger(err?.status)
+      ? err.status
+      : 500;
 
-  const status = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
   const error = err?.code || 'internal_error';
-  const message = status >= 500 ? 'Internal server error' : (err?.message || 'Request failed');
+  const message = status >= 500
+    ? 'Internal server error'
+    : (err?.message || 'Request failed');
+
+  logger.error('request_failed', {
+    request_id: req.requestContext?.requestId || null,
+    correlation_id: req.requestContext?.correlationId || null,
+    method: req.method,
+    path: req.originalUrl || req.url,
+    status_code: status,
+    error_code: error,
+    error_message: err?.message || 'Unhandled error'
+  });
 
   res.status(status).json({ error, message });
 });
@@ -120,13 +167,14 @@ const port = Number(process.env.PORT || 3000);
 const server = http.createServer(app);
 
 server.listen(port, () => {
-  console.log(`[gateway-api] listening on port ${port}`);
+  logger.info('gateway_api_listening', { port });
 });
 
 function shutdown(signal) {
-  console.log(`[gateway-api] received ${signal}, starting graceful shutdown`);
+  logger.info('gateway_api_shutdown_started', { signal });
+
   server.close(() => {
-    console.log('[gateway-api] shutdown complete');
+    logger.info('gateway_api_shutdown_complete', { signal });
     process.exit(0);
   });
 }
