@@ -25,6 +25,14 @@ function normalizePayload(payload = {}) {
     merchantName: payload.merchantName || payload.merchant_name || null,
     merchantMcc: payload.merchantMcc || payload.merchant_mcc || null,
     idempotencyKey: payload.idempotencyKey || payload.idempotency_key || null,
+    requestId: payload.requestId || payload.request_id || null,
+    correlationId: payload.correlationId || payload.correlation_id || null,
+    testDelayMs:
+      payload.testDelayMs === undefined && payload.test_delay_ms === undefined
+        ? null
+        : Number(payload.testDelayMs ?? payload.test_delay_ms),
+    testForceError:
+      payload.testForceError === true || payload.test_force_error === true,
     rawPayload: payload,
   };
 }
@@ -472,15 +480,19 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
 
   if (decision === 'approve') {
     const riskResult = await evaluateRisk({
-      cardId: input.cardId,
-      spaceId,
-      amount: Number(input.amount),
-      currency: normalizeCurrency(input.currency),
-      merchantName: input.merchantName,
-      merchantMcc: input.merchantMcc,
-      provider: input.provider,
-      providerAuthId: input.providerAuthId,
-      idempotencyKey,
+	  cardId: input.cardId,
+	  spaceId,
+	  amount: Number(input.amount),
+	  currency: normalizeCurrency(input.currency),
+	  merchantName: input.merchantName,
+	  merchantMcc: input.merchantMcc,
+	  provider: input.provider,
+	  providerAuthId: input.providerAuthId,
+	  idempotencyKey,
+	  requestId: input.requestId,
+	  correlationId: input.correlationId || idempotencyKey,
+	  testDelayMs: input.testDelayMs,
+	  testForceError: input.testForceError,
     });
 
     riskScore = riskResult.score;

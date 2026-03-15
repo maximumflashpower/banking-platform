@@ -9,8 +9,26 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 router.post('/decision/evaluate', async (req, res) => {
   const body = req.body || {};
+
+  const forcedDelayMs = Number(body.test_delay_ms || body.testDelayMs || 0);
+  const forceError = body.test_force_error === true || body.testForceError === true;
+
+  if (forcedDelayMs > 0) {
+    await sleep(forcedDelayMs);
+  }
+
+  if (forceError) {
+    return res.status(503).json({
+      ok: false,
+      error: 'forced_risk_failure_for_test',
+    });
+  }
 
   const cardId = body.card_id || body.cardId || null;
   const spaceId = body.space_id || body.spaceId || null;
