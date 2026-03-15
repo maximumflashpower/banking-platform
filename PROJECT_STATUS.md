@@ -66,3 +66,18 @@ PY
 Expected:
 
 chain_verified = True
+
+## Stage 8E — Backups y recovery verificable
+Status: IN PROGRESS
+
+Scope:
+- encrypted backup set for identity, financial, cards, risk, case, audit
+- 30-day retention policy
+- restore verification in scratch databases
+- ledger consistency check after restore
+- recovery evidence written to logs/recovery-evidence/
+
+Constraints:
+- must not impact gateway request path
+- must preserve existing smoke tests
+- must not break immutable audit evidence chain

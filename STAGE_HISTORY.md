@@ -50,3 +50,15 @@ Backups and recovery verification.
 
 Goals: - automated backups - retention policy - encrypted backup
 storage - restore testing - ledger consistency validation
+
+## Stage 8E — Backups y recovery verificable
+Planned after Stage 8D validation.
+
+Intent:
+- formalize encrypted multi-db backups
+- make restore test reproducible
+- persist recovery evidence
+- validate ledger consistency after restore
+
+Risk:
+- low, if kept outside critical request path
