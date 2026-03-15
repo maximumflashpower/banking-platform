@@ -131,17 +131,9 @@ function emitRiskMonitoringEvent({ cardId, authId, riskScore, reason }) {
 }
 
 async function maybeRepairApprovedAuthorization(cardsDb, financialDb, existing) {
-  if (!existing) {
-    return existing;
-  }
-
-  if (existing.decision !== 'approve') {
-    return existing;
-  }
-
-  if (existing.ledgerHoldId && existing.ledgerHoldRef) {
-    return existing;
-  }
+  if (!existing) return existing;
+  if (existing.decision !== 'approve') return existing;
+  if (existing.ledgerHoldId && existing.ledgerHoldRef) return existing;
 
   const balance = await availableBalanceReaderRepo.getAvailableBalance(
     financialDb,
@@ -150,7 +142,6 @@ async function maybeRepairApprovedAuthorization(cardsDb, financialDb, existing) 
   );
 
   const ledgerAccountId = balance.accountId || null;
-
   return maybeCreateLedgerHold(cardsDb, existing, ledgerAccountId);
 }
 
@@ -246,44 +237,31 @@ async function persistDecision(cardsDb, input) {
 }
 
 async function maybeCreateLedgerHold(cardsDb, persisted, accountId) {
-  if (persisted.decision !== 'approve') {
-    return persisted;
-  }
-
-  if (persisted.ledgerHoldId && persisted.ledgerHoldRef) {
-    return persisted;
-  }
-
-  if (!accountId) {
-    throw new Error('ledger_hold_create_failed:missing_account_id');
-  }
+  if (persisted.decision !== 'approve') return persisted;
+  if (persisted.ledgerHoldId && persisted.ledgerHoldRef) return persisted;
+  if (!accountId) throw new Error('ledger_hold_create_failed:missing_account_id');
 
   const holdRef = persisted.ledgerHoldRef || buildHoldRef(persisted);
 
-  const response = await fetch(
-    'http://localhost:3000/internal/v1/ledger/holds/create',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
+  const response = await fetch('http://localhost:3000/internal/v1/ledger/holds/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      accountId,
+      spaceId: persisted.spaceId,
+      holdRef,
+      externalRef: persisted.providerAuthId || persisted.id,
+      amount: persisted.amount,
+      currency: persisted.currency,
+      reason: 'card_authorization',
+      metadata: {
+        authorizationId: persisted.id,
+        cardId: persisted.cardId,
+        provider: persisted.provider,
+        providerAuthId: persisted.providerAuthId,
       },
-      body: JSON.stringify({
-        accountId,
-        spaceId: persisted.spaceId,
-        holdRef,
-        externalRef: persisted.providerAuthId || persisted.id,
-        amount: persisted.amount,
-        currency: persisted.currency,
-        reason: 'card_authorization',
-        metadata: {
-          authorizationId: persisted.id,
-          cardId: persisted.cardId,
-          provider: persisted.provider,
-          providerAuthId: persisted.providerAuthId,
-        },
-      }),
-    }
-  );
+    }),
+  });
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -351,12 +329,11 @@ async function publishDecisionOutbox(cardsDb, persisted) {
   };
 
   await insertOutbox(cardsDb, 'card.auth.received.v1', baseEventPayload);
-
-  if (persisted.decision === 'approve') {
-    await insertOutbox(cardsDb, 'card.auth.approved.v1', baseEventPayload);
-  } else {
-    await insertOutbox(cardsDb, 'card.auth.declined.v1', baseEventPayload);
-  }
+  await insertOutbox(
+    cardsDb,
+    persisted.decision === 'approve' ? 'card.auth.approved.v1' : 'card.auth.declined.v1',
+    baseEventPayload
+  );
 }
 
 async function decideAuthorization({ cardsDb, financialDb, payload }) {
@@ -396,9 +373,7 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
     });
 
     return {
-      ...buildCardsRailDecline({
-        requestId: input.requestId || null,
-      }),
+      ...buildCardsRailDecline({ requestId: input.requestId || null }),
       cardId: input.cardId || null,
       spaceId: input.spaceId || null,
       provider: input.provider || 'internal',
@@ -425,12 +400,7 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
     );
 
     if (existingByProviderAuth) {
-      const repaired = await maybeRepairApprovedAuthorization(
-        cardsDb,
-        financialDb,
-        existingByProviderAuth
-      );
-
+      const repaired = await maybeRepairApprovedAuthorization(cardsDb, financialDb, existingByProviderAuth);
       return toApiResponse(repaired, {
         idempotentReplay: true,
         webhookReplay: true,
@@ -446,12 +416,7 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
       : await cardAuthorizationsRepo.findByIdempotencyKey(cardsDb, idempotencyKey);
 
     if (replayByProviderAuth) {
-      const repaired = await maybeRepairApprovedAuthorization(
-        cardsDb,
-        financialDb,
-        replayByProviderAuth
-      );
-
+      const repaired = await maybeRepairApprovedAuthorization(cardsDb, financialDb, replayByProviderAuth);
       return toApiResponse(repaired, {
         idempotentReplay: true,
         webhookReplay: true,
@@ -585,7 +550,6 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
   }
 
   await publishDecisionOutbox(cardsDb, persisted);
-
   return toApiResponse(persisted);
 }
 
