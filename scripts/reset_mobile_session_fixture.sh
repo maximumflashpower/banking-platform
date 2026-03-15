@@ -18,7 +18,7 @@ SET
   expires_at = now() + interval '30 days',
   space_id = '$SPACE_ID',
   revoked_at = NULL
-WHERE id = '$MOBILE_SESSION_ID'::uuid;
+WHERE id = '$MOBILE_SESSION_ID';
 
 COMMIT;
 SQL
