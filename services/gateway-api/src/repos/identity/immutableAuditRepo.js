@@ -7,20 +7,20 @@ function stableStringify(value) {
   if (value === null || value === undefined) {
     return 'null';
   }
+
   if (typeof value !== 'object') {
     return JSON.stringify(value);
   }
+
   if (Array.isArray(value)) {
     return `[${value.map((item) => stableStringify(item)).join(',')}]`;
   }
+
   const keys = Object.keys(value).sort();
 
   return `{${keys
     .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
     .join(',')}}`;
-
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
-
 }
 
 function sha256(value) {
@@ -34,7 +34,6 @@ function normalizeMetadata(metadata) {
   return metadata;
 }
 
-<<<<<<< HEAD
 function normalizeHash(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
@@ -71,15 +70,10 @@ function buildEntryHash(payload, previousHash) {
       previous_hash: normalizeHash(previousHash)
     })
   );
-=======
-function buildEntryHash(payload, previousHash) {
-  return sha256(stableStringify({ ...payload, previous_hash: previousHash || null }));
->>>>>>> origin/main
 }
 
 async function appendAuditEvent(event) {
   return identityDb.withTransaction(async (client) => {
-<<<<<<< HEAD
     const prev = await client.query(`
       SELECT entry_hash
       FROM audit_log_immutable
@@ -124,49 +118,8 @@ async function appendAuditEvent(event) {
           $11, $12, $13, $14, $15, $16, $17, $18, $19,
           $20::jsonb, $21, $22
         )
-        RETURNING id, occurred_at, entry_hash, previous_hash
+        RETURNING id, occurred_at, created_at, entry_hash, previous_hash
       `,
-=======
-    const prev = await client.query(
-      'SELECT entry_hash FROM audit_log_immutable ORDER BY occurred_at DESC, created_at DESC LIMIT 1'
-    );
-    const previousHash = prev.rowCount ? prev.rows[0].entry_hash : null;
-    const payload = {
-      request_id: event.request_id,
-      correlation_id: event.correlation_id || null,
-      actor_user_id: event.actor_user_id || null,
-      actor_session_id: event.actor_session_id || null,
-      actor_space_id: event.actor_space_id || null,
-      actor_membership_id: event.actor_membership_id || null,
-      event_category: event.event_category,
-      event_type: event.event_type,
-      target_type: event.target_type || null,
-      target_id: event.target_id || null,
-      action: event.action,
-      result: event.result,
-      risk_level: event.risk_level || null,
-      reason: event.reason || null,
-      ip_address: event.ip_address || null,
-      user_agent: event.user_agent || null,
-      route_method: event.route_method || null,
-      route_path: event.route_path || null,
-      http_status: Number.isInteger(event.http_status) ? event.http_status : null,
-      metadata: normalizeMetadata(event.metadata)
-    };
-    const entryHash = buildEntryHash(payload, previousHash);
-    const result = await client.query(
-      `INSERT INTO audit_log_immutable (
-        request_id, correlation_id,
-        actor_user_id, actor_session_id, actor_space_id, actor_membership_id,
-        event_category, event_type,
-        target_type, target_id,
-        action, result, risk_level, reason,
-        ip_address, user_agent, route_method, route_path, http_status,
-        metadata, previous_hash, entry_hash
-      ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21,$22
-      ) RETURNING id, occurred_at, entry_hash, previous_hash`,
->>>>>>> origin/main
       [
         payload.request_id,
         payload.correlation_id,
@@ -192,10 +145,7 @@ async function appendAuditEvent(event) {
         entryHash
       ]
     );
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/main
     return result.rows[0];
   });
 }
@@ -203,10 +153,7 @@ async function appendAuditEvent(event) {
 async function listAuditEvents(filters = {}) {
   const clauses = [];
   const values = [];
-<<<<<<< HEAD
 
-=======
->>>>>>> origin/main
   const push = (sql, value) => {
     values.push(value);
     clauses.push(`${sql} $${values.length}`);
@@ -224,7 +171,6 @@ async function listAuditEvents(filters = {}) {
 
   const limit = Math.min(Math.max(Number(filters.limit) || 100, 1), 500);
   values.push(limit);
-<<<<<<< HEAD
 
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
@@ -264,29 +210,11 @@ async function listAuditEvents(filters = {}) {
     values
   );
 
-=======
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const result = await identityDb.query(
-    `SELECT id, occurred_at, request_id, correlation_id, actor_user_id, actor_session_id,
-            actor_space_id, actor_membership_id, event_category, event_type, target_type,
-            target_id, action, result, risk_level, reason, ip_address, user_agent,
-            route_method, route_path, http_status, metadata, previous_hash, entry_hash
-       FROM audit_log_immutable
-       ${where}
-      ORDER BY occurred_at DESC, created_at DESC
-      LIMIT $${values.length}`,
-    values
-  );
->>>>>>> origin/main
   return result.rows;
 }
 
 function canonicalRow(row) {
-<<<<<<< HEAD
   return canonicalEventPayload({
-=======
-  return {
->>>>>>> origin/main
     request_id: row.request_id,
     correlation_id: row.correlation_id,
     actor_user_id: row.actor_user_id,
@@ -306,7 +234,6 @@ function canonicalRow(row) {
     route_method: row.route_method,
     route_path: row.route_path,
     http_status: row.http_status,
-<<<<<<< HEAD
     metadata: row.metadata
   });
 }
@@ -340,32 +267,12 @@ function verifyAuditChain(rows) {
     }
   }
 
-=======
-    metadata: normalizeMetadata(row.metadata)
-  };
-}
-
-function verifyAuditChain(rows) {
-  const ordered = [...rows].reverse();
-  let previousHash = null;
-  for (const row of ordered) {
-    const expected = buildEntryHash(canonicalRow(row), previousHash);
-    if (expected !== row.entry_hash) {
-      return false;
-    }
-    previousHash = row.entry_hash;
-  }
->>>>>>> origin/main
   return true;
 }
 
 module.exports = {
   appendAuditEvent,
   listAuditEvents,
-<<<<<<< HEAD
   verifyAuditChain,
   buildEntryHash
-=======
-  verifyAuditChain
->>>>>>> origin/main
 };

@@ -46,6 +46,7 @@ async function writeAuditEvent(req, payload) {
   if (!event.request_id || !event.event_category || !event.event_type || !event.action || !event.result) {
     return null;
   }
+
   try {
     const row = await immutableAuditRepo.appendAuditEvent(event);
     logger.info('audit_event_appended', {
@@ -72,6 +73,67 @@ async function writeAuditEvent(req, payload) {
   }
 }
 
+async function writeSystemAuditEvent(payload) {
+  if (
+    !payload?.request_id ||
+    !payload?.event_category ||
+    !payload?.event_type ||
+    !payload?.action ||
+    !payload?.result
+  ) {
+    return null;
+  }
+
+  const event = {
+    request_id: payload.request_id,
+    correlation_id: payload.correlation_id || null,
+    actor_user_id: payload.actor_user_id || null,
+    actor_session_id: payload.actor_session_id || null,
+    actor_space_id: payload.actor_space_id || null,
+    actor_membership_id: payload.actor_membership_id || null,
+    event_category: payload.event_category,
+    event_type: payload.event_type,
+    target_type: payload.target_type || null,
+    target_id: payload.target_id || null,
+    action: payload.action,
+    result: payload.result,
+    risk_level: payload.risk_level || null,
+    reason: payload.reason || null,
+    ip_address: payload.ip_address || null,
+    user_agent: payload.user_agent || 'system/internal',
+    route_method: payload.route_method || 'SYSTEM',
+    route_path: payload.route_path || 'internal://system',
+    http_status: Number.isInteger(payload.http_status) ? payload.http_status : null,
+    metadata: payload.metadata || {},
+  };
+
+  try {
+    const row = await immutableAuditRepo.appendAuditEvent(event);
+    logger.info('system_audit_event_appended', {
+      request_id: event.request_id,
+      correlation_id: event.correlation_id,
+      event_category: event.event_category,
+      event_type: event.event_type,
+      audit_entry_id: row.id,
+      target_type: event.target_type,
+      target_id: event.target_id
+    });
+    return row;
+  } catch (error) {
+    logger.error('system_audit_write_failed', {
+      request_id: event.request_id,
+      correlation_id: event.correlation_id,
+      event_category: event.event_category,
+      event_type: event.event_type,
+      target_type: event.target_type,
+      target_id: event.target_id,
+      error_message: error?.message || 'system audit write failed'
+    });
+    return null;
+  }
+}
+
 module.exports = {
-  writeAuditEvent
+  writeAuditEvent,
+  writeSystemAuditEvent,
 };
