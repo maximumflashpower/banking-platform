@@ -13,7 +13,9 @@ services:
       SERVICE_NAME: gateway-api
       PORT: 3000
 
-      ACH_RAIL_ENABLED: "true"
+      RAILS_ACH_ENABLED: ${RAILS_ACH_ENABLED:-true}
+      RAILS_CARDS_ENABLED: ${RAILS_CARDS_ENABLED:-true}
+      ACH_RAIL_ENABLED: ${ACH_RAIL_ENABLED:-true}
       RISK_BYPASS_FOR_LOCAL: "true"
       LEDGER_BASE_URL: "http://localhost:3000"
 

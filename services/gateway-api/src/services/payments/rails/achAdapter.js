@@ -1,10 +1,14 @@
 'use strict';
 
+const { assertRailEnabled } = require('../../resilience/railSwitches');
+
 function buildMockTransferId() {
   return `ach_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 async function submitAchTransfer({ paymentIntent, transfer }) {
+  assertRailEnabled('ach');
+
   return {
     provider: 'mock_ach',
     provider_transfer_id: buildMockTransferId(),

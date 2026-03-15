@@ -4,6 +4,7 @@ const { randomUUID } = require('crypto');
 const { pool } = require('../../infrastructure/financialDb');
 const { submitAchTransfer } = require('./rails/achAdapter');
 const paymentIntentRiskGateService = require('./paymentIntentRiskGateService');
+const { assertRailEnabled } = require('../resilience/railSwitches');
 
 const ACH_RAIL_DISABLED_ERROR = 'rail_disabled';
 const PAYMENT_INTENT_NOT_FOUND_ERROR = 'payment_intent_not_found';
@@ -15,7 +16,12 @@ const PAYMENT_INTENT_BLOCKED_BY_RISK_ERROR = 'payment_intent_blocked_by_risk';
 const PAYMENT_INTENT_NOT_RISK_CLEARED_ERROR = 'payment_intent_not_risk_cleared';
 
 function isAchRailEnabled() {
-  return String(process.env.ACH_RAIL_ENABLED || 'true').toLowerCase() === 'true';
+  try {
+    assertRailEnabled('ach');
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function getCurrentPaymentIntent(client, paymentIntentId) {
@@ -132,9 +138,9 @@ async function createTransferRecord(client, paymentIntent, idempotencyKey, corre
       JSON.stringify({
         correlation_id: correlationId || paymentIntent.correlation_id || null,
         rail: 'ach',
-        stage: '4A',
-        amount_cents: paymentIntent.amount_cents
-      })
+        stage: '8D',
+        amount_cents: paymentIntent.amount_cents,
+      }),
     ]
   );
 
@@ -170,7 +176,7 @@ async function markTransferSubmitted(client, transferId, adapterResponse) {
       adapterResponse.provider,
       adapterResponse.provider_transfer_id,
       adapterResponse.state,
-      JSON.stringify(adapterResponse.metadata || {})
+      JSON.stringify(adapterResponse.metadata || {}),
     ]
   );
 
@@ -235,10 +241,15 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
     throw error;
   }
 
-  if (!isAchRailEnabled()) {
-    const error = new Error(ACH_RAIL_DISABLED_ERROR);
-    error.code = ACH_RAIL_DISABLED_ERROR;
-    error.status = 409;
+  try {
+    assertRailEnabled('ach');
+  } catch (error) {
+    error.code = error.code || ACH_RAIL_DISABLED_ERROR;
+    error.status = 503;
+    error.statusCode = 503;
+    error.rail = 'ach';
+    error.userMessage =
+      error.userMessage || 'ACH transfers are temporarily unavailable. Please retry later.';
     throw error;
   }
 
@@ -275,8 +286,8 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
           id: existingTransfer.id,
           provider: existingTransfer.provider,
           provider_transfer_id: existingTransfer.provider_transfer_id,
-          state: existingTransfer.state
-        }
+          state: existingTransfer.state,
+        },
       };
     }
 
@@ -286,7 +297,7 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
       error.status = 409;
       error.details = {
         expected: 'queued',
-        actual: paymentIntent.state
+        actual: paymentIntent.state,
       };
       throw error;
     }
@@ -302,7 +313,7 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
       paymentIntent,
       transfer: queuedTransfer,
       idempotencyKey,
-      correlationId
+      correlationId,
     });
 
     const submittedTransfer = await markTransferSubmitted(
@@ -327,8 +338,8 @@ async function submitAchPayment({ paymentIntentId, idempotencyKey, correlationId
         id: submittedTransfer.id,
         provider: submittedTransfer.provider,
         provider_transfer_id: submittedTransfer.provider_transfer_id,
-        state: submittedTransfer.state
-      }
+        state: submittedTransfer.state,
+      },
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -348,5 +359,5 @@ module.exports = {
   PAYMENT_INTENT_ID_REQUIRED_ERROR,
   PAYMENT_INTENT_UNDER_REVIEW_ERROR,
   PAYMENT_INTENT_BLOCKED_BY_RISK_ERROR,
-  PAYMENT_INTENT_NOT_RISK_CLEARED_ERROR
+  PAYMENT_INTENT_NOT_RISK_CLEARED_ERROR,
 };

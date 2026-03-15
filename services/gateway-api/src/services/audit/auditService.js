@@ -37,7 +37,7 @@ function buildAuditEvent(req, payload) {
     route_method: req.method,
     route_path: req.originalUrl || req.url,
     http_status: Number.isInteger(payload.http_status) ? payload.http_status : null,
-    metadata: payload.metadata || {}
+    metadata: payload.metadata || {},
   };
 }
 
@@ -56,7 +56,7 @@ async function writeAuditEvent(req, payload) {
       event_type: event.event_type,
       audit_entry_id: row.id,
       target_type: event.target_type,
-      target_id: event.target_id
+      target_id: event.target_id,
     });
     return row;
   } catch (error) {
@@ -67,7 +67,7 @@ async function writeAuditEvent(req, payload) {
       event_type: event.event_type,
       target_type: event.target_type,
       target_id: event.target_id,
-      error_message: error?.message || 'audit write failed'
+      error_message: error?.message || 'audit write failed',
     });
     return null;
   }
@@ -116,7 +116,7 @@ async function writeSystemAuditEvent(payload) {
       event_type: event.event_type,
       audit_entry_id: row.id,
       target_type: event.target_type,
-      target_id: event.target_id
+      target_id: event.target_id,
     });
     return row;
   } catch (error) {
@@ -127,13 +127,49 @@ async function writeSystemAuditEvent(payload) {
       event_type: event.event_type,
       target_type: event.target_type,
       target_id: event.target_id,
-      error_message: error?.message || 'system audit write failed'
+      error_message: error?.message || 'system audit write failed',
     });
     return null;
   }
 }
 
+async function writeRailKillSwitchBlockedEvent({
+  requestId,
+  correlationId = null,
+  spaceId = null,
+  targetType,
+  targetId = null,
+  rail,
+  result = 'blocked',
+  routeMethod = 'SYSTEM',
+  routePath = 'internal://system',
+  httpStatus = null,
+  metadata = {},
+}) {
+  return writeSystemAuditEvent({
+    request_id: requestId,
+    correlation_id: correlationId,
+    actor_space_id: spaceId,
+    event_category: 'operations.resilience',
+    event_type: 'rail.kill_switch.blocked',
+    target_type: targetType,
+    target_id: targetId,
+    action: 'block',
+    result,
+    reason: `${rail}_rail_disabled`,
+    route_method: routeMethod,
+    route_path: routePath,
+    http_status: httpStatus,
+    metadata: {
+      rail,
+      degraded: true,
+      ...metadata,
+    },
+  });
+}
+
 module.exports = {
   writeAuditEvent,
   writeSystemAuditEvent,
+  writeRailKillSwitchBlockedEvent,
 };

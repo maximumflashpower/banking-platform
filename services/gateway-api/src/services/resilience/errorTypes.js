@@ -58,3 +58,14 @@ module.exports = {
   ExternalPermanentError,
   IdempotencyConflictError,
 };
+
+const ERROR_TYPES = {
+  // ... existentes
+  RAIL_DISABLED: 'RAIL_DISABLED'
+};
+
+module.exports = {
+  ERROR_TYPES
+};
+
+const RAIL_DISABLED = 'RAIL_DISABLED';
