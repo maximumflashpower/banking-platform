@@ -52,9 +52,21 @@ class IdempotencyConflictError extends Error {
   }
 }
 
+const RAIL_DISABLED = 'RAIL_DISABLED';
+
+const ERROR_TYPES = {
+  EXTERNAL_TIMEOUT: 'EXTERNAL_TIMEOUT',
+  EXTERNAL_TRANSIENT: 'EXTERNAL_TRANSIENT',
+  EXTERNAL_PERMANENT: 'EXTERNAL_PERMANENT',
+  IDEMPOTENCY_CONFLICT: 'IDEMPOTENCY_CONFLICT',
+  RAIL_DISABLED,
+};
+
 module.exports = {
   ExternalTimeoutError,
   ExternalTransientError,
   ExternalPermanentError,
   IdempotencyConflictError,
+  ERROR_TYPES,
+  RAIL_DISABLED,
 };

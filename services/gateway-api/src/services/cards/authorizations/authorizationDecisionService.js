@@ -8,6 +8,9 @@ const cardAuthorizationsRepo = require('../../../repos/cards/cardAuthorizationsR
 const spaceStateReaderRepo = require('../../../repos/cards/spaceStateReaderRepo');
 const availableBalanceReaderRepo = require('../../../repos/cards/availableBalanceReaderRepo');
 const { evaluateRisk } = require('./riskClient');
+const { getRailSwitches } = require('../../resilience/railSwitches');
+const { buildCardsRailDecline } = require('../../resilience/degradationResponses');
+const auditService = require('../../audit/auditService');
 
 function normalizeCurrency(value) {
   return String(value || '').trim().toUpperCase();
@@ -108,6 +111,9 @@ function toApiResponse(record, meta = {}) {
     webhookReplay: meta.webhookReplay === true,
     createdAt: record.createdAt,
     decisionedAt: record.decisionedAt,
+    degraded: meta.degraded === true,
+    retryable: meta.retryable === true,
+    requestId: meta.requestId || null,
   };
 }
 
@@ -125,17 +131,9 @@ function emitRiskMonitoringEvent({ cardId, authId, riskScore, reason }) {
 }
 
 async function maybeRepairApprovedAuthorization(cardsDb, financialDb, existing) {
-  if (!existing) {
-    return existing;
-  }
-
-  if (existing.decision !== 'approve') {
-    return existing;
-  }
-
-  if (existing.ledgerHoldId && existing.ledgerHoldRef) {
-    return existing;
-  }
+  if (!existing) return existing;
+  if (existing.decision !== 'approve') return existing;
+  if (existing.ledgerHoldId && existing.ledgerHoldRef) return existing;
 
   const balance = await availableBalanceReaderRepo.getAvailableBalance(
     financialDb,
@@ -144,7 +142,6 @@ async function maybeRepairApprovedAuthorization(cardsDb, financialDb, existing) 
   );
 
   const ledgerAccountId = balance.accountId || null;
-
   return maybeCreateLedgerHold(cardsDb, existing, ledgerAccountId);
 }
 
@@ -240,44 +237,31 @@ async function persistDecision(cardsDb, input) {
 }
 
 async function maybeCreateLedgerHold(cardsDb, persisted, accountId) {
-  if (persisted.decision !== 'approve') {
-    return persisted;
-  }
-
-  if (persisted.ledgerHoldId && persisted.ledgerHoldRef) {
-    return persisted;
-  }
-
-  if (!accountId) {
-    throw new Error('ledger_hold_create_failed:missing_account_id');
-  }
+  if (persisted.decision !== 'approve') return persisted;
+  if (persisted.ledgerHoldId && persisted.ledgerHoldRef) return persisted;
+  if (!accountId) throw new Error('ledger_hold_create_failed:missing_account_id');
 
   const holdRef = persisted.ledgerHoldRef || buildHoldRef(persisted);
 
-  const response = await fetch(
-    'http://localhost:3000/internal/v1/ledger/holds/create',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
+  const response = await fetch('http://localhost:3000/internal/v1/ledger/holds/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      accountId,
+      spaceId: persisted.spaceId,
+      holdRef,
+      externalRef: persisted.providerAuthId || persisted.id,
+      amount: persisted.amount,
+      currency: persisted.currency,
+      reason: 'card_authorization',
+      metadata: {
+        authorizationId: persisted.id,
+        cardId: persisted.cardId,
+        provider: persisted.provider,
+        providerAuthId: persisted.providerAuthId,
       },
-      body: JSON.stringify({
-        accountId,
-        spaceId: persisted.spaceId,
-        holdRef,
-        externalRef: persisted.providerAuthId || persisted.id,
-        amount: persisted.amount,
-        currency: persisted.currency,
-        reason: 'card_authorization',
-        metadata: {
-          authorizationId: persisted.id,
-          cardId: persisted.cardId,
-          provider: persisted.provider,
-          providerAuthId: persisted.providerAuthId,
-        },
-      }),
-    }
-  );
+    }),
+  });
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -345,17 +329,17 @@ async function publishDecisionOutbox(cardsDb, persisted) {
   };
 
   await insertOutbox(cardsDb, 'card.auth.received.v1', baseEventPayload);
-
-  if (persisted.decision === 'approve') {
-    await insertOutbox(cardsDb, 'card.auth.approved.v1', baseEventPayload);
-  } else {
-    await insertOutbox(cardsDb, 'card.auth.declined.v1', baseEventPayload);
-  }
+  await insertOutbox(
+    cardsDb,
+    persisted.decision === 'approve' ? 'card.auth.approved.v1' : 'card.auth.declined.v1',
+    baseEventPayload
+  );
 }
 
 async function decideAuthorization({ cardsDb, financialDb, payload }) {
   const input = normalizePayload(payload);
   const idempotencyKey = buildIdempotencyKey(input);
+  const railSwitches = getRailSwitches();
 
   if (!input.cardId || !Number.isFinite(input.amount) || input.amount <= 0 || !input.currency) {
     return buildNonPersistedResponse(
@@ -367,6 +351,39 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
       },
       { idempotencyKey }
     );
+  }
+
+  if (!railSwitches.cardsEnabled) {
+    await auditService.writeRailKillSwitchBlockedEvent({
+      requestId: input.requestId || `cards-rail-disabled-${Date.now()}`,
+      correlationId: input.correlationId || idempotencyKey,
+      spaceId: input.spaceId || null,
+      targetType: 'cards.authorization',
+      targetId: input.providerAuthId || null,
+      rail: 'cards',
+      result: 'degraded_decline',
+      routeMethod: 'SYSTEM',
+      routePath: 'internal://cards/authorizationDecisionService',
+      httpStatus: 200,
+      metadata: {
+        provider: input.provider || 'internal',
+        provider_auth_id: input.providerAuthId || null,
+        idempotency_key: idempotencyKey,
+      },
+    });
+
+    return {
+      ...buildCardsRailDecline({ requestId: input.requestId || null }),
+      cardId: input.cardId || null,
+      spaceId: input.spaceId || null,
+      provider: input.provider || 'internal',
+      providerAuthId: input.providerAuthId || null,
+      idempotencyKey,
+      amount: Number.isFinite(input.amount) ? Number(input.amount) : null,
+      currency: input.currency || null,
+      merchantName: input.merchantName || null,
+      merchantMcc: input.merchantMcc || null,
+    };
   }
 
   const existingByKey = await cardAuthorizationsRepo.findByIdempotencyKey(cardsDb, idempotencyKey);
@@ -383,12 +400,7 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
     );
 
     if (existingByProviderAuth) {
-      const repaired = await maybeRepairApprovedAuthorization(
-        cardsDb,
-        financialDb,
-        existingByProviderAuth
-      );
-
+      const repaired = await maybeRepairApprovedAuthorization(cardsDb, financialDb, existingByProviderAuth);
       return toApiResponse(repaired, {
         idempotentReplay: true,
         webhookReplay: true,
@@ -404,12 +416,7 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
       : await cardAuthorizationsRepo.findByIdempotencyKey(cardsDb, idempotencyKey);
 
     if (replayByProviderAuth) {
-      const repaired = await maybeRepairApprovedAuthorization(
-        cardsDb,
-        financialDb,
-        replayByProviderAuth
-      );
-
+      const repaired = await maybeRepairApprovedAuthorization(cardsDb, financialDb, replayByProviderAuth);
       return toApiResponse(repaired, {
         idempotentReplay: true,
         webhookReplay: true,
@@ -480,19 +487,19 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
 
   if (decision === 'approve') {
     const riskResult = await evaluateRisk({
-	  cardId: input.cardId,
-	  spaceId,
-	  amount: Number(input.amount),
-	  currency: normalizeCurrency(input.currency),
-	  merchantName: input.merchantName,
-	  merchantMcc: input.merchantMcc,
-	  provider: input.provider,
-	  providerAuthId: input.providerAuthId,
-	  idempotencyKey,
-	  requestId: input.requestId,
-	  correlationId: input.correlationId || idempotencyKey,
-	  testDelayMs: input.testDelayMs,
-	  testForceError: input.testForceError,
+      cardId: input.cardId,
+      spaceId,
+      amount: Number(input.amount),
+      currency: normalizeCurrency(input.currency),
+      merchantName: input.merchantName,
+      merchantMcc: input.merchantMcc,
+      provider: input.provider,
+      providerAuthId: input.providerAuthId,
+      idempotencyKey,
+      requestId: input.requestId,
+      correlationId: input.correlationId || idempotencyKey,
+      testDelayMs: input.testDelayMs,
+      testForceError: input.testForceError,
     });
 
     riskScore = riskResult.score;
@@ -543,7 +550,6 @@ async function decideAuthorization({ cardsDb, financialDb, payload }) {
   }
 
   await publishDecisionOutbox(cardsDb, persisted);
-
   return toApiResponse(persisted);
 }
 

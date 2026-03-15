@@ -43,6 +43,7 @@ const internalStepUpStartRoutes = require('./routes/internal/stepUpStart');
 const internalAuditEvidenceRoutes = require('./routes/internal/auditEvidence');
 
 const webSessionSecurityService = require('./services/identity/webSessionSecurityService');
+const { getRailSwitches } = require('./services/resilience/railSwitches');
 
 const app = express();
 
@@ -50,18 +51,9 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
-/**
- * 8A observability foundation:
- * apply request context + structured request logging as early as possible
- * so every route, including /health and 404s, gets traced.
- */
 app.use(requestContext);
 app.use(requestLogging);
 
-/**
- * Best-effort background security maintenance for web session routes.
- * Keep this after request context so any future logs can reuse request ids.
- */
 app.use(async (req, _res, next) => {
   try {
     if (req.path.startsWith('/public/v1/web/')) {
@@ -74,7 +66,7 @@ app.use(async (req, _res, next) => {
       method: req.method,
       path: req.originalUrl || req.url,
       error_code: err?.code || null,
-      error_message: err?.message || 'expireInactiveSessions failed'
+      error_message: err?.message || 'expireInactiveSessions failed',
     });
   }
 
@@ -82,12 +74,18 @@ app.use(async (req, _res, next) => {
 });
 
 app.get('/health', (req, res) => {
+  const railSwitches = getRailSwitches();
+
   res.status(200).json({
     ok: true,
     service: 'gateway-api',
     timestamp: new Date().toISOString(),
     request_id: req.requestContext?.requestId || null,
-    correlation_id: req.requestContext?.correlationId || null
+    correlation_id: req.requestContext?.correlationId || null,
+    rails: {
+      ach_enabled: railSwitches.achEnabled,
+      cards_enabled: railSwitches.cardsEnabled,
+    },
   });
 });
 
@@ -131,12 +129,12 @@ app.use((req, res) => {
     request_id: req.requestContext?.requestId || null,
     correlation_id: req.requestContext?.correlationId || null,
     method: req.method,
-    path: req.originalUrl || req.url
+    path: req.originalUrl || req.url,
   });
 
   res.status(404).json({
     error: 'not_found',
-    message: `Route not found: ${req.method} ${req.originalUrl}`
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
   });
 });
 
@@ -159,7 +157,7 @@ app.use((err, req, res, _next) => {
     path: req.originalUrl || req.url,
     status_code: status,
     error_code: error,
-    error_message: err?.message || 'Unhandled error'
+    error_message: err?.message || 'Unhandled error',
   });
 
   res.status(status).json({ error, message });
@@ -169,7 +167,15 @@ const port = Number(process.env.PORT || 3000);
 const server = http.createServer(app);
 
 server.listen(port, () => {
-  logger.info('gateway_api_listening', { port });
+  const railSwitches = getRailSwitches();
+
+  logger.info('gateway_api_listening', {
+    port,
+    rails: {
+      ach_enabled: railSwitches.achEnabled,
+      cards_enabled: railSwitches.cardsEnabled,
+    },
+  });
 });
 
 function shutdown(signal) {
