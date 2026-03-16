@@ -1,122 +1,118 @@
-```md
 # STAGE HISTORY — Banking Platform
 
-## Stage 7C
+## Stage 7C — Approvals Workflow
 
-Approvals workflow with step-up verification.
+Introduced secure multi-step approvals and step-up verification.
 
-Key goals:
+Key capabilities:
 
-- multi-step authorization
-- secure approvals
-- audit traceability
-
----
-
-## Stage 7D
-
-Secure web session management.
-
-Features:
-
-- session integrity
-- correlation IDs
-- improved request context tracking
+- approval vote recording
+- step-up verification flow
+- audit event generation
 
 ---
 
-## Stage 8A
+## Stage 7D — Secure Sessions
 
-Observability foundation.
-
-Added:
-
-- structured logging
-- request tracing
-- health endpoints
-
----
-
-## Stage 8B
-
-Immutable audit trail.
-
-Features:
-
-- append-only audit events
-- evidence chain verification
-- audit evidence endpoint
-
----
-
-## Stage 8C
-
-Passive resilience improvements.
-
-Features:
-
-- defensive error handling
-- improved resilience patterns
-
----
-
-## Stage 8D
-
-Rail kill switches and controlled degradation.
+Added secure web session management.
 
 Capabilities:
 
-- disable ACH rail
-- disable cards rail
-- controlled fallback behavior
-- operational audit events
-- health endpoint rail visibility
-
-Validation performed:
-
-- smoke tests
-- rail OFF tests
-- evidence chain verification
+- session integrity
+- request correlation IDs
+- improved authentication session handling
 
 ---
 
-## Stage 8E — Backups y recovery verificable
+## Stage 8A — Observability Foundation
 
-Status: implemented (execution deferred)
+Introduced baseline observability.
 
-Backup tooling implemented:
+Includes:
 
-- `scripts/backup_stage8e.sh`
-- `scripts/restore_stage8e_verify.sh`
+- structured logging
+- request tracing
+- health endpoint
+
+---
+
+## Stage 8B — Immutable Audit Trail
+
+Introduced immutable audit evidence chain.
+
+Capabilities:
+
+- append-only audit events
+- evidence chain verification
+- audit evidence API endpoint
+
+---
+
+## Stage 8C — Passive Resilience
+
+Improved defensive resilience behavior.
+
+Includes:
+
+- safer error handling
+- defensive transaction flows
+- resilience logging
+
+---
+
+## Stage 8D — Rail Kill Switches
+
+Introduced controlled payment rail degradation.
+
+Capabilities:
+
+- ACH rail disable control
+- cards rail disable control
+- degraded behavior handling
+- operational audit events
+
+---
+
+## Stage 8E — Backups and Recovery Verification
+
+Implemented encrypted backup and verified restore workflow.
 
 Capabilities:
 
 - encrypted database backups
-- manifest + checksum validation
-- restore verification workflow
-- recovery evidence generation
+- artifact checksum verification
+- automated restore verification
+- recovery evidence logging
+- ledger consistency validation
 
-Final execution and retained evidence will occur once the full Stage 8 block is completed.
+Scripts introduced:
+
+- `scripts/backup_stage8e.sh`
+- `scripts/restore_stage8e_verify.sh`
+
+Recovery evidence stored in:
+
+- `logs/recovery-evidence/`
 
 ---
 
-## Stage 8F — Runbooks operativos
+## Stage 8F — Operational Runbooks
 
-Status: implemented
+Introduced formal operational procedures.
 
-Adds operational documentation for:
+Runbooks include:
 
 - incident response
 - service recovery
 - rail degradation handling
-- backup and recovery verification
-- audit evidence verification
+- backup and restore procedures
+- audit verification
 
-Files added under:
+Directory:
 
-`docs/runbooks/`
+- `docs/runbooks/`
 
-Key runbooks:
+Key files:
 
 - `RUNBOOK_INCIDENT_RESPONSE.md`
 - `RUNBOOK_SERVICE_RECOVERY.md`
@@ -126,40 +122,39 @@ Key runbooks:
 
 ---
 
-## Stage 8G — Access Control Interno
+## Stage 8G — Internal Access Control
 
-Status: implemented
+Introduced operational access control policies and segregation of duties.
 
-Introduces internal operational access control policies and segregation of duties.
+Includes:
 
-Adds documentation defining:
+- operational role definitions
+- sensitive operation controls
+- authorization procedures
+- two-person rule for critical operations
 
-- operational roles
-- sensitive operations
-- authorization flows
-- two-person rule for critical actions
-- segregation of duties matrix
+Directory:
 
-Files added:
+- `docs/access-control/`
 
-- `docs/access-control/ACCESS_CONTROL_POLICY.md`
-- `docs/access-control/SOD_MATRIX.md`
-- `docs/access-control/OPERATIONAL_AUTHORIZATION.md`
+Files:
+
+- `ACCESS_CONTROL_POLICY.md`
+- `SOD_MATRIX.md`
+- `OPERATIONAL_AUTHORIZATION.md`
 
 ---
 
-## Stage 8H — Escalabilidad y Performance Controlada
+## Stage 8H — Controlled Scalability and Performance Validation
 
-Status: implemented
-
-Adds controlled performance validation procedures.
+Introduced performance validation procedures.
 
 Includes:
 
 - API concurrency testing
 - audit evidence endpoint stability testing
 - evidence chain verification under load
-- performance validation strategy documentation
+- performance validation strategy
 
 Files added:
 
@@ -170,19 +165,25 @@ Files added:
 
 ---
 
-## Current closeout status
+## Stage 8 Final Closeout
 
-At this point:
+Stage 8 completed successfully.
 
-- Stage 8F is implemented
-- Stage 8G is implemented
-- Stage 8H is implemented
-- Stage 8E tooling is implemented but final execution remains pending
+Final validation included:
 
-The final Stage 8 closeout requires:
+- regression smoke tests
+- audit evidence verification
+- encrypted backup generation
+- checksum validation
+- restore verification
+- recovery evidence retention
+- ledger consistency validation
 
-- fresh encrypted backup generation
-- checksum verification
-- successful restore verification
-- retained recovery evidence
-- final ledger consistency confirmation
+The platform now includes:
+
+- operational resilience controls
+- immutable audit evidence preservation
+- verified backup and recovery capability
+- documented operational procedures
+- internal access control policies
+- controlled scalability validation

@@ -3,12 +3,12 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_ROOT="${BACKUP_ROOT:-$HOME/backups/banking-platform/stage8e}"
-POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
-POSTGRES_USER="${POSTGRES_USER:-postgres}"
+POSTGRES_SERVICE="${POSTGRES_SERVICE:-db}"
+POSTGRES_USER="${POSTGRES_USER:-app}"
 BACKUP_ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY:-}"
 
-REQUIRED_DBS=(identity financial cards risk case audit)
-OPTIONAL_DBS=(social)
+REQUIRED_DBS=(identity financial_db cards_db risk_db case_db social)
+OPTIONAL_DBS=()
 
 if [[ -z "$BACKUP_ENCRYPTION_KEY" ]]; then
   echo "ERROR: BACKUP_ENCRYPTION_KEY is required for Stage 8E encrypted backups." >&2
@@ -64,8 +64,10 @@ for db in "${OPTIONAL_DBS[@]}"; do
 done
 
 snapshot_rel="logs/system-snapshots/system_snapshot_2026-03-15_180735.log"
+snapshot_file=""
 if [[ -f "$PROJECT_ROOT/$snapshot_rel" ]]; then
   cp "$PROJECT_ROOT/$snapshot_rel" "$set_dir/"
+  snapshot_file="$(basename "$snapshot_rel")"
 fi
 
 cat > "$set_dir/manifest.json" <<JSON
@@ -76,9 +78,11 @@ cat > "$set_dir/manifest.json" <<JSON
   "stage": "8E",
   "branch": "$branch",
   "commit": "$commit",
-  "required_databases": ["identity", "financial", "cards", "risk", "case", "audit"],
-  "optional_databases": ["social"],
-  "snapshot_file": "$(basename "$snapshot_rel")",
+  "postgres_service": "$POSTGRES_SERVICE",
+  "postgres_user": "$POSTGRES_USER",
+  "required_databases": ["identity", "financial_db", "cards_db", "risk_db", "case_db", "social"],
+  "optional_databases": [],
+  "snapshot_file": "$snapshot_file",
   "encryption": "openssl-aes-256-cbc-pbkdf2"
 }
 JSON
