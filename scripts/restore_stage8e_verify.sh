@@ -2,8 +2,8 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
-POSTGRES_USER="${POSTGRES_USER:-postgres}"
+POSTGRES_SERVICE="${POSTGRES_SERVICE:-db}"
+POSTGRES_USER="${POSTGRES_USER:-app}"
 BACKUP_ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY:-}"
 RECOVERY_EVIDENCE_DIR="$PROJECT_ROOT/logs/recovery-evidence"
 
@@ -22,6 +22,7 @@ mkdir -p "$RECOVERY_EVIDENCE_DIR"
 
 ts="$(date -u +%Y-%m-%dT%H%M%SZ)"
 safe_ts="$(date -u +%Y-%m-%d_%H%M%S)"
+db_suffix="$(date -u +%Y%m%d%H%M%S)"
 log_file="$RECOVERY_EVIDENCE_DIR/recovery_verify_${safe_ts}.log"
 json_file="$RECOVERY_EVIDENCE_DIR/recovery_verify_${safe_ts}.json"
 
@@ -59,23 +60,23 @@ echo "==> Validating internal checksums"
 restore_db() {
   local source_db="$1"
   local dump_file="$2"
-  local target_db="${source_db}_restore_verify_${safe_ts//[-_:TZ]/}"
+  local target_db="${source_db}_restore_verify_${db_suffix}"
 
-  echo "==> Restoring $source_db into $target_db"
-
-  docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T "$POSTGRES_SERVICE" \
-    psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
-    -c "DROP DATABASE IF EXISTS \"$target_db\";"
+  echo "==> Restoring $source_db into $target_db" >&2
 
   docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T "$POSTGRES_SERVICE" \
     psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
-    -c "CREATE DATABASE \"$target_db\";"
+    -c "DROP DATABASE IF EXISTS \"$target_db\";" >&2
+
+  docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T "$POSTGRES_SERVICE" \
+    psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
+    -c "CREATE DATABASE \"$target_db\";" >&2
 
   docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T "$POSTGRES_SERVICE" \
     psql -U "$POSTGRES_USER" -d "$target_db" -v ON_ERROR_STOP=1 \
-    < "$dump_file"
+    < "$dump_file" >&2
 
-  echo "$target_db"
+  printf '%s\n' "$target_db"
 }
 
 verify_table_exists() {
@@ -158,7 +159,7 @@ verify_ledger_consistency() {
 }
 
 declare -A restored
-required=(identity financial cards risk case audit)
+required=(identity financial_db cards_db risk_db case_db social)
 
 for db in "${required[@]}"; do
   dump_file="$backup_dir/dumps/${db}.sql"
@@ -171,37 +172,72 @@ done
 
 overall_status="PASS"
 
-verify_required_tables "${restored[identity]}" users sessions step_up_sessions audit_log_immutable || overall_status="FAIL"
-verify_required_tables "${restored[financial]}" payment_intents ledger_accounts ledger_journal_entries ledger_postings || overall_status="FAIL"
-verify_required_tables "${restored[cards]}" cards card_authorizations card_settlements || overall_status="FAIL"
-verify_required_tables "${restored[risk]}" risk_decisions risk_profiles || overall_status="FAIL"
-verify_required_tables "${restored[case]}" cases case_evidence case_timeline || overall_status="FAIL"
-verify_required_tables "${restored[audit]}" security_events admin_actions exports_log || overall_status="FAIL"
+verify_required_tables "${restored[identity]}" \
+  users sessions step_up_sessions audit_log_immutable || overall_status="FAIL"
 
-verify_ledger_consistency "${restored[financial]}" || overall_status="FAIL"
+verify_required_tables "${restored[financial_db]}" \
+  payment_intents ledger_accounts ledger_journal_entries ledger_postings || overall_status="FAIL"
 
-python3 - <<PY > "$json_file"
+verify_required_tables "${restored[cards_db]}" \
+  cards card_authorizations cards_webhook_events || overall_status="FAIL"
+
+verify_required_tables "${restored[risk_db]}" \
+  risk_decisions risk_profiles || overall_status="FAIL"
+
+verify_required_tables "${restored[case_db]}" \
+  cases case_timeline case_assignments || overall_status="FAIL"
+
+verify_required_tables "${restored[social]}" \
+  entitlements role_change_events || overall_status="FAIL"
+
+verify_ledger_consistency "${restored[financial_db]}" || overall_status="FAIL"
+
+IDENTITY_DB="${restored[identity]}"
+FINANCIAL_DB="${restored[financial_db]}"
+CARDS_DB="${restored[cards_db]}"
+RISK_DB="${restored[risk_db]}"
+CASE_DB="${restored[case_db]}"
+SOCIAL_DB="${restored[social]}"
+OVERALL_STATUS="$overall_status"
+TS="$ts"
+ARTIFACT="$artifact"
+LOG_FILE="$log_file"
+BACKUP_DIR_JSON="$backup_dir"
+
+IDENTITY_DB="$IDENTITY_DB" \
+FINANCIAL_DB="$FINANCIAL_DB" \
+CARDS_DB="$CARDS_DB" \
+RISK_DB="$RISK_DB" \
+CASE_DB="$CASE_DB" \
+SOCIAL_DB="$SOCIAL_DB" \
+OVERALL_STATUS="$OVERALL_STATUS" \
+TS="$TS" \
+ARTIFACT="$ARTIFACT" \
+LOG_FILE="$LOG_FILE" \
+BACKUP_DIR_JSON="$BACKUP_DIR_JSON" \
+python3 - <<'PY' > "$json_file"
 import json
+import os
 from pathlib import Path
 
-manifest = json.loads(Path("$backup_dir/manifest.json").read_text())
+manifest = json.loads(Path(os.environ["BACKUP_DIR_JSON"]).joinpath("manifest.json").read_text())
 
 data = {
-  "verified_at_utc": "$ts",
-  "artifact": "$artifact",
+  "verified_at_utc": os.environ["TS"],
+  "artifact": os.environ["ARTIFACT"],
   "backup_set_id": manifest.get("backup_set_id"),
   "branch": manifest.get("branch"),
   "commit": manifest.get("commit"),
   "restored_databases": {
-    "identity": "${restored[identity]}",
-    "financial": "${restored[financial]}",
-    "cards": "${restored[cards]}",
-    "risk": "${restored[risk]}",
-    "case": "${restored[case]}",
-    "audit": "${restored[audit]}"
+    "identity": os.environ["IDENTITY_DB"],
+    "financial_db": os.environ["FINANCIAL_DB"],
+    "cards_db": os.environ["CARDS_DB"],
+    "risk_db": os.environ["RISK_DB"],
+    "case_db": os.environ["CASE_DB"],
+    "social": os.environ["SOCIAL_DB"],
   },
-  "overall_status": "$overall_status",
-  "log_file": "$log_file"
+  "overall_status": os.environ["OVERALL_STATUS"],
+  "log_file": os.environ["LOG_FILE"],
 }
 print(json.dumps(data, indent=2))
 PY

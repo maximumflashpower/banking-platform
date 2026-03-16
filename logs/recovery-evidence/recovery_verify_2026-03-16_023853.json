@@ -1,0 +1,17 @@
+{
+  "verified_at_utc": "2026-03-16T023853Z",
+  "artifact": "/home/ubuntu-777/backups/banking-platform/stage8e/stage8e_2026-03-16_023334_6e38aa7.tar.gz.enc",
+  "backup_set_id": "stage8e_2026-03-16_023334_6e38aa7",
+  "branch": "main",
+  "commit": "6e38aa7c29086721c2dc1b9c113fb81728b76d0e",
+  "restored_databases": {
+    "identity": "identity_restore_verify_20260316023853",
+    "financial_db": "financial_db_restore_verify_20260316023853",
+    "cards_db": "cards_db_restore_verify_20260316023853",
+    "risk_db": "risk_db_restore_verify_20260316023853",
+    "case_db": "case_db_restore_verify_20260316023853",
+    "social": "social_restore_verify_20260316023853"
+  },
+  "overall_status": "FAIL",
+  "log_file": "/home/ubuntu-777/projects/banking-platform/logs/recovery-evidence/recovery_verify_2026-03-16_023853.log"
+}
