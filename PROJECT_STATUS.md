@@ -6,144 +6,134 @@ Last updated: 2026-03-16 UTC
 
 https://github.com/maximumflashpower/banking-platform
 
-Project directory: ~/projects/banking-platform  
+Project directory: ~/projects/banking-platform
 Backups directory: ~/backups/banking-platform
-
-## Environment
-
-- Node.js v20
-- PostgreSQL
-- Docker Compose
-- Ubuntu
 
 ---
 
-# Current Completed Stages
+# Environment
+
+Node.js v20
+PostgreSQL
+Docker Compose
+Ubuntu
+
+---
+
+# Completed Stages
 
 | Stage | Description | Status |
 |------|-------------|-------|
-| Stage 7C | Approvals / step-up workflow | ✔ |
-| Stage 7D | Secure web sessions | ✔ |
+| Stage 7C | Approvals workflow | ✔ |
+| Stage 7D | Secure sessions | ✔ |
 | Stage 8A | Observability foundation | ✔ |
-| Stage 8B | Immutable audit trail + evidence endpoint | ✔ |
+| Stage 8B | Immutable audit trail | ✔ |
 | Stage 8C | Passive resilience | ✔ |
-| Stage 8D | Rail kill switches + controlled degradation | ✔ |
+| Stage 8D | Rail kill switches | ✔ |
+| Stage 8E | Verified backup and recovery | ✔ |
+| Stage 8F | Operational runbooks | ✔ |
+| Stage 8G | Internal access control | ✔ |
+| Stage 8H | Controlled scalability validation | ✔ |
 
 ---
 
-# Stage 8D Highlights
+# Stage 8 Closeout Summary
 
-Rails controlled by environment variables:
+Stage 8 introduced the operational resilience layer of the banking platform.
 
-RAILS_ACH_ENABLED  
-RAILS_CARDS_ENABLED
+Capabilities validated:
 
-Behavior:
-
-ACH disabled → HTTP 503 `rail_disabled`  
-Cards disabled → HTTP 200 degraded decline
-
-Audit event emitted:
-
-operations.resilience → rail.kill_switch.blocked
-
-Health endpoint exposes rail status:
-
-GET /health
+- immutable audit evidence chain
+- rail degradation controls
+- operational runbooks
+- internal access control and segregation of duties
+- controlled performance validation
+- encrypted backup and verified recovery workflow
 
 ---
 
-# Current Stage 8 Status
+# Verified Recovery
 
-## Stage 8E — Backups y recovery verificable
+Stage 8E verification included:
 
-Status: **implemented (execution deferred)**
-
-Implemented:
-
-- encrypted backup generation workflow
-- manifest-based backup traceability
+- encrypted backup generation
 - artifact checksum validation
-- restore verification tooling
-- recovery evidence logging structure
+- full database restore verification
+- ledger consistency validation
+- recovery evidence generation
 
-Final execution is deferred until the full Stage 8 block is completed.
+Backup artifacts stored under:
 
----
+~/backups/banking-platform/stage8e
 
-## Stage 8F — Runbooks operativos
+Recovery evidence stored under:
 
-Status: **implemented**
-
-Implemented runbooks for:
-
-- incident response
-- service recovery
-- rail degradation handling
-- backup and recovery verification
-- audit evidence verification
-
-Documentation directory:
-
-`docs/runbooks/`
+logs/recovery-evidence/
 
 ---
 
-## Stage 8G — Access control interno y separación de deberes
+# Evidence Chain Verification
 
-Status: **implemented**
+Command used to validate audit integrity:
 
-Implemented documentation for:
-
-- internal operational roles
-- sensitive operation controls
-- segregation of duties matrix
-- operational authorization procedure
-- two-person rule for critical actions
-
-Documentation directory:
-
-`docs/access-control/`
-
----
-
-## Stage 8H — Escalabilidad y performance controlada
-
-Status: **implemented**
-
-Implemented:
-
-- performance validation strategy
-- API concurrency testing
-- audit evidence endpoint stability testing
-- evidence chain verification under load
-
-Documentation and scripts:
-
-- `docs/performance/PERFORMANCE_STRATEGY.md`
-- `scripts/performance/api_concurrency_test.sh`
-- `scripts/performance/audit_evidence_stability_test.sh`
-- `scripts/performance/evidence_chain_check.sh`
-
----
-
-# Validation Completed
-
-- Syntax checks
-- Docker rebuild
-- Smoke tests for Stage 7C / 7D / 8B
-- Evidence chain verified
-- ACH rail OFF test
-- Cards rail OFF test
-
----
-
-# Evidence chain validation command
-
-```bash
-python3 - <<'PY'
+python3 - <<PY
 import json, urllib.request
 data = json.load(urllib.request.urlopen("http://localhost:3000/internal/v1/audit/evidence?limit=100"))
 print("chain_verified =", data.get("chain_verified"))
 print(sorted({item.get("event_type") for item in data.get("items", [])}))
 PY
+
+Expected baseline:
+
+chain_verified = True
+
+---
+
+# Operational Documentation
+
+Runbooks directory:
+
+docs/runbooks/
+
+Included runbooks:
+
+- RUNBOOK_INCIDENT_RESPONSE.md
+- RUNBOOK_SERVICE_RECOVERY.md
+- RUNBOOK_RAIL_DEGRADATION.md
+- RUNBOOK_BACKUP_RECOVERY.md
+- RUNBOOK_AUDIT_VERIFICATION.md
+
+---
+
+# Access Control Documentation
+
+docs/access-control/
+
+- ACCESS_CONTROL_POLICY.md
+- SOD_MATRIX.md
+- OPERATIONAL_AUTHORIZATION.md
+
+---
+
+# Performance Validation
+
+- docs/performance/PERFORMANCE_STRATEGY.md
+- scripts/performance/api_concurrency_test.sh
+- scripts/performance/audit_evidence_stability_test.sh
+- scripts/performance/evidence_chain_check.sh
+
+---
+
+# Current Milestone
+
+v0.9.0-ops-hardened
+
+This milestone represents a fully hardened operational platform baseline with verified recovery capability.
+
+---
+
+# Next Development Phase
+
+- external integrations
+- payment rail expansion
+- production deployment hardening
