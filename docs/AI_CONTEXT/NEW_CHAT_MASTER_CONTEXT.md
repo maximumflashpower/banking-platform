@@ -26,10 +26,10 @@ pero con infraestructura financiera integrada.
 
 Funciones principales:
 
-chat  
-pagos  
-wallet  
-cuentas business  
+chat
+pagos
+wallet
+cuentas business
 financial inbox
 
 No es red social.
@@ -44,14 +44,14 @@ La app se centra en comunicación privada + operaciones financieras.
 
 Separación de dominios obligatoria:
 
-identity  
-social  
-financial  
-ledger  
-risk  
-aml  
-governance  
-ops  
+identity
+social
+financial
+ledger
+risk
+aml
+governance
+ops
 
 Regla crítica:
 
@@ -79,34 +79,26 @@ fail-open
 
 Sistema:
 
-Ubuntu  
-Docker  
-Node.js v20  
+Ubuntu
+Docker
+Node.js v20
 PostgreSQL
 
 Servicios docker:
 
-api  
+api
 db
-
-Verificar:
-
-docker compose ps
 
 ---
 
 # BASES DE DATOS
 
-identity  
-financial_db  
-cards_db  
-risk_db  
-case_db  
-social  
-
-Verificar:
-
-docker compose exec -T db psql -U app -lqt
+identity
+financial_db
+cards_db
+risk_db
+case_db
+social
 
 ---
 
@@ -154,16 +146,16 @@ OK
 
 # TESTS
 
-bash scripts/stage7c_smoke_test.sh  
-bash scripts/stage7d_smoke_test.sh  
+bash scripts/stage7c_smoke_test.sh
+bash scripts/stage7d_smoke_test.sh
 bash scripts/stage8b_audit_smoke_test.sh
 
 ---
 
 # DOCUMENTACIÓN
 
-docs/runbooks/  
-docs/access-control/  
+docs/runbooks/
+docs/access-control/
 docs/performance/
 
 ---
@@ -174,30 +166,30 @@ v0.9.0-ops-hardened
 
 Incluye:
 
-observability  
-audit trail  
-resiliencia  
-kill switches  
-backup cifrado  
-runbooks  
-access control  
+observability
+audit trail
+resiliencia
+kill switches
+backup cifrado
+runbooks
+access control
 performance validation
 
 ---
 
 # STAGES COMPLETADAS
 
-Stage 7C — Approvals workflow  
-Stage 7D — Secure sessions  
+Stage 7C — Approvals workflow
+Stage 7D — Secure sessions
 
-Stage 8A — Observability  
-Stage 8B — Immutable audit  
-Stage 8C — Passive resilience  
-Stage 8D — Kill switches  
-Stage 8E — Backup & recovery  
-Stage 8F — Runbooks  
-Stage 8G — Access control  
-Stage 8H — Performance validation  
+Stage 8A — Observability
+Stage 8B — Immutable audit
+Stage 8C — Passive resilience
+Stage 8D — Kill switches
+Stage 8E — Backup & recovery
+Stage 8F — Runbooks
+Stage 8G — Access control
+Stage 8H — Performance validation
 
 ---
 
@@ -215,47 +207,47 @@ preparar el sistema para la experiencia completa del producto.
 
 0A — Product shell
 
-chats  
-contacts  
-wallet  
-business  
-settings  
+chats
+contacts
+wallet
+business
+settings
 
 ---
 
 0B — Space isolation
 
-personal space  
-business space  
+personal space
+business space
 
 ---
 
 0C — Domain kill switches
 
-SOCIAL_ENABLED  
-PERSONAL_FINANCE_ENABLED  
-BUSINESS_FINANCE_ENABLED  
-FINANCIAL_INBOX_ENABLED  
+SOCIAL_ENABLED
+PERSONAL_FINANCE_ENABLED
+BUSINESS_FINANCE_ENABLED
+FINANCIAL_INBOX_ENABLED
 
 ---
 
 0D — Health por dominio
 
-identity  
-social  
-personal_finance  
-business_finance  
-risk  
-ledger  
+identity
+social
+personal_finance
+business_finance
+risk
+ledger
 
 ---
 
 0E — Chat → Payment Intent bridge
 
-chat  
-→ payment intent  
-→ risk  
-→ ledger  
+chat
+→ payment intent
+→ risk
+→ ledger
 
 ---
 
@@ -267,8 +259,8 @@ git checkout -b feat/stage0-platform-foundation
 
 # FLUJO GIT
 
-git add .  
-git commit -m "feat(stage0): platform foundation"  
+git add .
+git commit -m "feat(stage0): platform foundation"
 git push origin feat/stage0-platform-foundation
 
 ---
