@@ -82,37 +82,37 @@ Validation performed:
 
 ## Stage 8E — Backups y recovery verificable
 
-Status: **completed**
+Status: implemented (execution deferred)
 
-Objectives:
-
-- formalize encrypted multi-database backups
-- enable reproducible restore verification
-- retain recovery evidence
-- validate ledger structure after restore
-
-Delivered:
+Backup tooling implemented:
 
 - `scripts/backup_stage8e.sh`
 - `scripts/restore_stage8e_verify.sh`
-- encrypted backup artifacts
+
+Capabilities:
+
+- encrypted database backups
+- manifest + checksum validation
 - restore verification workflow
-- recovery evidence logs
+- recovery evidence generation
 
-Validation:
+Final execution and retained evidence will occur once the full Stage 8 block is completed.
 
-- script syntax validation
-- API rebuild and health verification
-- Stage 7C smoke test
-- Stage 7D smoke test
-- Stage 8B audit smoke test
-- audit evidence chain verification
+---
 
-Result:
+## Stage 8F — Runbooks operativos
 
-Stage 8E completed successfully without modifying gateway request path logic.
+Status: in progress
 
-Release milestone:
+Adds operational documentation for:
+
+- incident response
+- service recovery
+- rail degradation handling
+- backup and recovery verification
+- audit evidence verification
+
+Runbooks added under:
 
 
-v0.8.0-core-stable
+docs/runbooks/
