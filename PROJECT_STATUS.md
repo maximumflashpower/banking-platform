@@ -53,6 +53,12 @@ GET /health
 
 ---
 
+Stage 8E — Backups y recovery verificable (tooling implemented, execution deferred)
+
+Stage 8F — Runbooks operativos (in progress)
+Stage 8G — Access control interno (in progress)
+Stage 8H — Escalabilidad / performance
+
 # Validation Completed
 
 - Syntax checks

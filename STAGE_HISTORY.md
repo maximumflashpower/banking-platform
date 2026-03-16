@@ -112,6 +112,26 @@ Adds operational documentation for:
 - backup and recovery verification
 - audit evidence verification
 
+## Stage 8G — Access Control Interno
+
+Status: implemented
+
+Introduces internal operational access control policies and segregation of duties.
+
+Adds documentation defining:
+
+- operational roles
+- sensitive operations
+- authorization flows
+- two-person rule for critical actions
+- segregation of duties matrix
+
+Files added:
+
+docs/access-control/ACCESS_CONTROL_POLICY.md  
+docs/access-control/SOD_MATRIX.md  
+docs/access-control/OPERATIONAL_AUTHORIZATION.md
+
 Runbooks added under:
 
 
