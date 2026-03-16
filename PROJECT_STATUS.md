@@ -1,6 +1,6 @@
 # PROJECT STATUS — Banking Platform
 
-Last updated: 2026-03-15 UTC
+Last updated: 2026-03-16 UTC
 
 ## Repository
 
@@ -28,18 +28,15 @@ Backups directory: ~/backups/banking-platform
 | Stage 8B | Immutable audit trail + evidence endpoint | ✔ |
 | Stage 8C | Passive resilience | ✔ |
 | Stage 8D | Rail kill switches + controlled degradation | ✔ |
-| Stage 8E | Backups and recovery verification | ✔ |
 
 ---
 
 # Stage 8D Highlights
 
-Rails controlled by env flags:
+Rails controlled by environment variables:
 
-
-RAILS_ACH_ENABLED
+RAILS_ACH_ENABLED  
 RAILS_CARDS_ENABLED
-
 
 Behavior:
 
@@ -48,15 +45,11 @@ Cards disabled → HTTP 200 degraded decline
 
 Audit event emitted:
 
-
 operations.resilience → rail.kill_switch.blocked
-
 
 Health endpoint exposes rail status:
 
-
 GET /health
-
 
 ---
 
@@ -80,7 +73,5 @@ data = json.load(urllib.request.urlopen("http://localhost:3000/internal/v1/audit
 print("chain_verified =", data.get("chain_verified"))
 print(sorted({item.get("event_type") for item in data.get("items", [])}))
 PY
-
-Expected:
 
 chain_verified = True
