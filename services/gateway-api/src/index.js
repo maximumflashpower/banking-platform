@@ -14,6 +14,7 @@ const financialInboxRoutes = require('./routes/financialInbox');
 const cardsDisputesRoutes = require('./routes/cardsDisputes');
 const stepUpRoutes = require('./routes/stepUp');
 const webQrSessionsRoutes = require('./routes/webQrSessions');
+const socialRoutes = require('./routes/social');
 
 const internalBusinessesRoutes = require('./routes/internal/businesses');
 const internalCasesRoutes = require('./routes/internal/cases');
@@ -96,6 +97,7 @@ app.use('/public/v1/financial-inbox', financialInboxRoutes);
 app.use('/public/v1/cards/disputes', cardsDisputesRoutes);
 app.use('/public/v1/auth/step-up', stepUpRoutes);
 app.use('/public/v1/web', webQrSessionsRoutes);
+app.use('/public/v1/social/conversations', socialRoutes);
 
 app.use('/internal/v1/businesses', internalBusinessesRoutes);
 app.use('/internal/v1/case-management/cases', internalCasesRoutes);
