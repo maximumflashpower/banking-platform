@@ -1,6 +1,6 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { requireSessionType } from "../src/middleware/requireSessionType.js";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { requireSessionType } = require("../src/middleware/requireSessionType.js");
 
 function createMockRes() {
   return {

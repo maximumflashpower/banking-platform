@@ -1,4 +1,4 @@
-export function requireSessionType(expectedType) {
+function requireSessionType(expectedType) {
   return function sessionTypeMiddleware(req, res, next) {
     const session = req.session;
 
@@ -13,3 +13,5 @@ export function requireSessionType(expectedType) {
     return next();
   };
 }
+
+module.exports = { requireSessionType };
