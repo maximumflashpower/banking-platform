@@ -1,9 +1,41 @@
+'use strict';
+
 function normalizeLimit(limit, fallback = 50, max = 100) {
   const parsed = Number(limit);
+
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
   }
+
   return Math.min(parsed, max);
+}
+
+function encodeCursor({ created_at, id }) {
+  return Buffer.from(
+    JSON.stringify({
+      created_at,
+      id,
+    }),
+    'utf8'
+  ).toString('base64');
+}
+
+function decodeCursor(cursor) {
+  if (!cursor) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8'));
+
+    if (!parsed?.created_at || !parsed?.id) {
+      return null;
+    }
+
+    return parsed;
+  } catch (_error) {
+    return null;
+  }
 }
 
 async function createMessage(db, {
@@ -12,7 +44,7 @@ async function createMessage(db, {
   spaceId,
   senderUserId,
   bodyText,
-  clientMessageId = null,
+  clientMessageId,
 }) {
   const result = await db.query(
     `
@@ -26,6 +58,9 @@ async function createMessage(db, {
         client_message_id
       )
       VALUES ($1, $2, $3, $4, 'text', $5, $6)
+      ON CONFLICT (conversation_id, client_message_id)
+      DO UPDATE
+        SET client_message_id = EXCLUDED.client_message_id
       RETURNING
         id,
         conversation_id,
@@ -34,7 +69,8 @@ async function createMessage(db, {
         message_type,
         body_text,
         client_message_id,
-        created_at
+        created_at,
+        (xmax = 0) AS inserted
     `,
     [
       messageId,
@@ -49,14 +85,27 @@ async function createMessage(db, {
   return result.rows[0];
 }
 
-async function findByClientMessageId(db, {
+async function listMessages(db, {
   conversationId,
-  senderUserId,
-  clientMessageId,
+  limit,
+  cursor,
 }) {
-  if (!clientMessageId) {
-    return null;
+  const safeLimit = normalizeLimit(limit, 50, 100);
+  const decodedCursor = decodeCursor(cursor);
+
+  const params = [conversationId];
+  let cursorClause = '';
+  let limitParamIndex = 2;
+
+  if (decodedCursor) {
+    params.push(decodedCursor.created_at, decodedCursor.id);
+    cursorClause = `
+      AND (created_at, id) > ($2::timestamptz, $3::uuid)
+    `;
+    limitParamIndex = 4;
   }
+
+  params.push(safeLimit + 1);
 
   const result = await db.query(
     `
@@ -71,47 +120,26 @@ async function findByClientMessageId(db, {
         created_at
       FROM messages
       WHERE conversation_id = $1
-        AND sender_user_id = $2
-        AND client_message_id = $3
-      LIMIT 1
-    `,
-    [conversationId, senderUserId, clientMessageId]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function listMessages(db, { conversationId, limit, beforeCreatedAt }) {
-  const safeLimit = normalizeLimit(limit);
-  const params = [conversationId, safeLimit];
-  let cursorSql = '';
-
-  if (beforeCreatedAt) {
-    params.push(beforeCreatedAt);
-    cursorSql = `AND created_at < $3`;
-  }
-
-  const result = await db.query(
-    `
-      SELECT
-        id,
-        conversation_id,
-        space_id,
-        sender_user_id,
-        message_type,
-        body_text,
-        client_message_id,
-        created_at
-      FROM messages
-      WHERE conversation_id = $1
-        ${cursorSql}
-      ORDER BY created_at DESC, id DESC
-      LIMIT $2
+        ${cursorClause}
+      ORDER BY created_at ASC, id ASC
+      LIMIT $${limitParamIndex}
     `,
     params
   );
 
-  return result.rows.reverse();
+  const hasMore = result.rows.length > safeLimit;
+  const items = hasMore ? result.rows.slice(0, safeLimit) : result.rows;
+  const lastItem = items.length > 0 ? items[items.length - 1] : null;
+
+  return {
+    items,
+    nextCursor: hasMore && lastItem
+      ? encodeCursor({
+          created_at: lastItem.created_at,
+          id: lastItem.id,
+        })
+      : null,
+  };
 }
 
 async function getLastMessageForConversationIds(db, { conversationIds }) {
@@ -139,7 +167,8 @@ async function getLastMessageForConversationIds(db, { conversationIds }) {
 
 module.exports = {
   createMessage,
-  findByClientMessageId,
   listMessages,
   getLastMessageForConversationIds,
+  encodeCursor,
+  decodeCursor,
 };

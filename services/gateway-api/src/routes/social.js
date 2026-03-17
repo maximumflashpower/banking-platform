@@ -140,13 +140,13 @@ router.get(
     const actorUserId = resolveActorUserId(req);
     const spaceId = resolveSpaceId(req);
     const conversationId = req.params.id;
-    const { limit, before_created_at: beforeCreatedAt } = req.query || {};
+    const { limit, cursor } = req.query || {};
 
     assertRequired(actorUserId, 'actor_user_missing', 'Authenticated user is required', 401);
     assertRequired(spaceId, 'space_id_required', 'space_id is required');
     assertRequired(conversationId, 'conversation_id_required', 'conversation id is required');
 
-    const items = await listMessages({
+    const result = await listMessages({
       db: socialDb,
       conversationsRepo,
       conversationMembersRepo,
@@ -155,10 +155,13 @@ router.get(
       conversationId,
       spaceId,
       limit,
-      beforeCreatedAt,
+      cursor,
     });
 
-    return res.status(200).json({ items });
+    return res.status(200).json({
+      items: result.items,
+      next_cursor: result.nextCursor,
+    });
   })
 );
 
@@ -177,6 +180,11 @@ router.post(
     assertRequired(spaceId, 'space_id_required', 'space_id is required');
     assertRequired(conversationId, 'conversation_id_required', 'conversation id is required');
     assertRequired(bodyText, 'body_text_required', 'body_text is required');
+    assertRequired(
+      clientMessageId,
+      'client_message_id_required',
+      'client_message_id is required'
+    );
 
     const result = await sendMessage({
       db: socialDb,
