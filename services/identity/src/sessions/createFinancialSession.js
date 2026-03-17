@@ -13,7 +13,9 @@ export async function createFinancialSession({
   }
 
   const repo = buildSessionsRepo(db);
-  const expiresAt = new Date(Date.now() + FINANCIAL_SESSION_TTL_MINUTES * 60 * 1000);
+  const expiresAt = new Date(
+    Date.now() + FINANCIAL_SESSION_TTL_MINUTES * 60 * 1000
+  );
 
   return repo.createSession({
     userId,

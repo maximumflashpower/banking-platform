@@ -4,6 +4,7 @@ import { createSocialSession } from "../src/sessions/createSocialSession.js";
 
 test("createSocialSession creates an active social session", async () => {
   let capturedQuery = null;
+
   const fakeDb = {
     async query(sql, params) {
       capturedQuery = { sql, params };

@@ -22,6 +22,7 @@ test("createFinancialSession requires spaceId", async () => {
 
 test("createFinancialSession creates an active financial session", async () => {
   let capturedQuery = null;
+
   const fakeDb = {
     async query(sql, params) {
       capturedQuery = { sql, params };
