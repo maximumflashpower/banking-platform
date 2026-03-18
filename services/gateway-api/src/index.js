@@ -16,6 +16,7 @@ const cardsDisputesRoutes = require('./routes/cardsDisputes');
 const stepUpRoutes = require('./routes/stepUp');
 const webQrSessionsRoutes = require('./routes/webQrSessions');
 const socialRoutes = require('./routes/social');
+const kycProtectedProbeRoutes = require('./routes/kycProtectedProbe');
 
 const internalBusinessesRoutes = require('./routes/internal/businesses');
 const internalCasesRoutes = require('./routes/internal/cases');
@@ -94,6 +95,7 @@ app.get('/health', (req, res) => {
 
 app.use('/public/v1/identity', identityRoutes);
 app.use('/public/v1/kyc', kycRoutes);
+app.use('/public/v1/kyc-protected', kycProtectedProbeRoutes);
 app.use('/public/v1/finance/payment-intents', paymentIntentsRoutes);
 app.use('/public/v1/finance/approvals', approvalsRoutes);
 app.use('/public/v1/financial-inbox', financialInboxRoutes);
