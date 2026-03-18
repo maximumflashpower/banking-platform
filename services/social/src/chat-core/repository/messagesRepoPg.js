@@ -38,14 +38,65 @@ function decodeCursor(cursor) {
   }
 }
 
+function normalizeAttachmentSizeBytes(attachmentSizeBytes) {
+  if (
+    attachmentSizeBytes === undefined ||
+    attachmentSizeBytes === null ||
+    attachmentSizeBytes === ''
+  ) {
+    return null;
+  }
+
+  const parsed = Number(attachmentSizeBytes);
+
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    const error = new Error('attachment_size_bytes_invalid');
+    error.statusCode = 400;
+    error.code = 'attachment_size_bytes_invalid';
+    throw error;
+  }
+
+  return parsed;
+}
+
+function normalizeAttachmentMetadata(attachmentMetadata) {
+  if (attachmentMetadata === undefined || attachmentMetadata === null) {
+    return null;
+  }
+
+  return JSON.stringify(attachmentMetadata);
+}
+
 async function createMessage(db, {
   messageId,
   conversationId,
   spaceId,
   senderUserId,
+  messageType,
   bodyText,
   clientMessageId,
+  attachmentUrl,
+  attachmentType,
+  attachmentSizeBytes,
+  attachmentMetadata,
 }) {
+  const normalizedAttachmentSizeBytes = normalizeAttachmentSizeBytes(attachmentSizeBytes);
+  const normalizedAttachmentMetadata = normalizeAttachmentMetadata(attachmentMetadata);
+
+  console.log('createMessage params', {
+    messageId,
+    conversationId,
+    spaceId,
+    senderUserId,
+    messageType,
+    bodyText,
+    clientMessageId,
+    attachmentUrl,
+    attachmentType,
+    normalizedAttachmentSizeBytes,
+    normalizedAttachmentMetadata,
+  });
+
   const result = await db.query(
     `
       INSERT INTO messages (
@@ -55,9 +106,25 @@ async function createMessage(db, {
         sender_user_id,
         message_type,
         body_text,
-        client_message_id
+        client_message_id,
+        attachment_url,
+        attachment_type,
+        attachment_size_bytes,
+        attachment_metadata
       )
-      VALUES ($1, $2, $3, $4, 'text', $5, $6)
+      VALUES (
+        $1::uuid,
+        $2::uuid,
+        $3::text,
+        $4::text,
+        $5::text,
+        $6::text,
+        $7::text,
+        $8::text,
+        $9::text,
+        $10::integer,
+        $11::jsonb
+      )
       ON CONFLICT (conversation_id, client_message_id)
       DO UPDATE
         SET client_message_id = EXCLUDED.client_message_id
@@ -69,6 +136,10 @@ async function createMessage(db, {
         message_type,
         body_text,
         client_message_id,
+        attachment_url,
+        attachment_type,
+        attachment_size_bytes,
+        attachment_metadata,
         created_at,
         (xmax = 0) AS inserted
     `,
@@ -77,8 +148,13 @@ async function createMessage(db, {
       conversationId,
       spaceId,
       senderUserId,
-      bodyText,
+      messageType,
+      bodyText ?? null,
       clientMessageId,
+      attachmentUrl ?? null,
+      attachmentType ?? null,
+      normalizedAttachmentSizeBytes,
+      normalizedAttachmentMetadata,
     ]
   );
 
@@ -117,9 +193,13 @@ async function listMessages(db, {
         message_type,
         body_text,
         client_message_id,
+        attachment_url,
+        attachment_type,
+        attachment_size_bytes,
+        attachment_metadata,
         created_at
       FROM messages
-      WHERE conversation_id = $1
+      WHERE conversation_id = $1::uuid
         ${cursorClause}
       ORDER BY created_at ASC, id ASC
       LIMIT $${limitParamIndex}
@@ -153,7 +233,13 @@ async function getLastMessageForConversationIds(db, { conversationIds }) {
         m.conversation_id,
         m.id,
         m.sender_user_id,
+        m.message_type,
         m.body_text,
+        m.client_message_id,
+        m.attachment_url,
+        m.attachment_type,
+        m.attachment_size_bytes,
+        m.attachment_metadata,
         m.created_at
       FROM messages m
       WHERE m.conversation_id = ANY($1::uuid[])
