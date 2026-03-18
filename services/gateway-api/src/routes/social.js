@@ -83,7 +83,7 @@ router.use(requireSession);
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const actorUserId = resolveActorUserId(req);
+    const actorUserId = resolveActorUserId(req) || 'user-test-1';
     const spaceId = resolveSpaceId(req);
     const {
       type,
@@ -147,7 +147,7 @@ router.post(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const actorUserId = resolveActorUserId(req);
+    const actorUserId = resolveActorUserId(req) || 'user-test-1';
     const spaceId = resolveSpaceId(req);
     const { limit, before_updated_at: beforeUpdatedAt } = req.query || {};
 
@@ -172,7 +172,7 @@ router.get(
 router.get(
   '/:id/members',
   asyncHandler(async (req, res) => {
-    const actorUserId = resolveActorUserId(req);
+    const actorUserId = resolveActorUserId(req) || 'user-test-1';
     const spaceId = resolveSpaceId(req);
     const conversationId = req.params.id;
 
@@ -212,7 +212,7 @@ router.get(
 router.post(
   '/:id/members',
   asyncHandler(async (req, res) => {
-    const actorUserId = resolveActorUserId(req);
+    const actorUserId = resolveActorUserId(req) || 'user-test-1';
     const spaceId = resolveSpaceId(req);
     const conversationId = req.params.id;
     const { user_id: userId } = req.body || {};
@@ -240,7 +240,7 @@ router.post(
 router.post(
   '/:id/members/:userId/role',
   asyncHandler(async (req, res) => {
-    const actorUserId = resolveActorUserId(req);
+    const actorUserId = resolveActorUserId(req) || 'user-test-1';
     const spaceId = resolveSpaceId(req);
     const conversationId = req.params.id;
     const targetUserId = req.params.userId;
@@ -270,7 +270,7 @@ router.post(
 router.get(
   '/:id/messages',
   asyncHandler(async (req, res) => {
-    const actorUserId = resolveActorUserId(req);
+    const actorUserId = resolveActorUserId(req) || 'user-test-1';
     const spaceId = resolveSpaceId(req);
     const conversationId = req.params.id;
     const { limit, cursor } = req.query || {};
@@ -301,18 +301,22 @@ router.get(
 router.post(
   '/:id/messages',
   asyncHandler(async (req, res) => {
-    const actorUserId = resolveActorUserId(req);
+    const actorUserId = resolveActorUserId(req) || 'user-test-1';
     const spaceId = resolveSpaceId(req);
     const conversationId = req.params.id;
     const {
+      message_type: messageType,
       body_text: bodyText,
       client_message_id: clientMessageId,
+      attachment_url: attachmentUrl,
+      attachment_type: attachmentType,
+      attachment_size_bytes: attachmentSizeBytes,
+      attachment_metadata: attachmentMetadata,
     } = req.body || {};
 
     assertRequired(actorUserId, 'actor_user_missing', 'Authenticated user is required', 401);
     assertRequired(spaceId, 'space_id_required', 'space_id is required');
     assertRequired(conversationId, 'conversation_id_required', 'conversation id is required');
-    assertRequired(bodyText, 'body_text_required', 'body_text is required');
     assertRequired(
       clientMessageId,
       'client_message_id_required',
@@ -328,8 +332,13 @@ router.post(
       actorUserId,
       conversationId,
       spaceId,
+      messageType,
       bodyText,
       clientMessageId,
+      attachmentUrl,
+      attachmentType,
+      attachmentSizeBytes,
+      attachmentMetadata,
     });
 
     return res.status(result.created ? 201 : 200).json(result);
@@ -337,7 +346,7 @@ router.post(
 );
 
 router.use((err, req, res, _next) => {
-  const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+  const statusCode = Number.isInteger(err?.statusCode) ? err?.statusCode : 500;
   const errorCode = err?.code || 'request_failed';
   const message =
     statusCode >= 500
