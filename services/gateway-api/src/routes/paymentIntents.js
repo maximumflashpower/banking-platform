@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { pool } = require('../infrastructure/financialDb');
 const paymentIntentRiskGateService = require('../services/payments/paymentIntentRiskGateService');
 const paymentIntentRiskGateRepo = require('../repos/payments/paymentIntentRiskGateRepo');
+const { requireKycVerified } = require('../middleware/requireKycVerified');
 
 const router = express.Router();
 
@@ -148,7 +149,7 @@ async function hydrateRiskFieldsIfNeeded(responseJson) {
   };
 }
 
-router.post('/payment-intents', async (req, res, next) => {
+router.post('/', requireKycVerified, async (req, res, next) => {
   const idemKey = req.header('Idempotency-Key');
 
   if (!isNonEmptyString(idemKey)) {

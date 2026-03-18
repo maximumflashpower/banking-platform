@@ -9,6 +9,7 @@ const logger = require('./infrastructure/logger');
 
 const identityRoutes = require('./routes/identity');
 const kycRoutes = require('./routes/kyc');
+const personalFinancialProfileRoutes = require('./routes/personalFinancialProfile');
 const paymentIntentsRoutes = require('./routes/paymentIntents');
 const approvalsRoutes = require('./routes/approvals');
 const financialInboxRoutes = require('./routes/financialInbox');
@@ -98,6 +99,7 @@ app.use('/public/v1/kyc', kycRoutes);
 app.use('/public/v1/kyc-protected', kycProtectedProbeRoutes);
 app.use('/public/v1/finance/payment-intents', paymentIntentsRoutes);
 app.use('/public/v1/finance/approvals', approvalsRoutes);
+app.use('/public/v1/finance', personalFinancialProfileRoutes);
 app.use('/public/v1/financial-inbox', financialInboxRoutes);
 app.use('/public/v1/cards/disputes', cardsDisputesRoutes);
 app.use('/public/v1/auth/step-up', stepUpRoutes);
