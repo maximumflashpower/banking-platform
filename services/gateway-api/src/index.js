@@ -1,3 +1,4 @@
+const internalWalletTransfersRoutes = require('./routes/internal/walletTransfers');
 'use strict';
 
 const http = require('http');
@@ -210,3 +211,4 @@ function shutdown(signal) {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+app.use(internalWalletTransfersRoutes);
