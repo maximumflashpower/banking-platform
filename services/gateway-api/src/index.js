@@ -9,6 +9,7 @@ const logger = require('./infrastructure/logger');
 
 const identityRoutes = require('./routes/identity');
 const kycRoutes = require('./routes/kyc');
+const ledgerEntriesRoutes = require('./routes/internal/ledgerEntries');
 const personalFinancialProfileRoutes = require('./routes/personalFinancialProfile');
 const personalWalletRoutes = require('./routes/personalWallet');
 const paymentIntentsRoutes = require('./routes/paymentIntents');
@@ -30,6 +31,7 @@ const internalCardsAuthDecisionRoutes = require('./routes/internal/cardsAuthDeci
 const internalCardsAuthorizationWebhookRoutes = require('./routes/internal/cardsAuthorizationWebhook');
 const internalCardsFinancialWebhookRoutes = require('./routes/internal/cardsFinancialWebhook');
 const internalKycRoutes = require('./routes/internal/kyc');
+const internalLedgerEntriesRoutes = require('./routes/internal/ledgerEntries');
 const internalLedgerEnsureWalletRoutes = require('./routes/internal/ledgerEnsureWallet');
 const internalLedgerWalletAccountsRoutes = require('./routes/internal/ledgerWalletAccounts');
 const internalLedgerAccountsBalanceRoutes = require('./routes/internal/ledgerAccountsBalance');
@@ -58,6 +60,7 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
+app.use(ledgerEntriesRoutes);
 app.use(requestContext);
 app.use(requestLogging);
 
@@ -121,6 +124,7 @@ app.use('/internal/v1/cards', internalCardsFinancialWebhookRoutes);
 app.use('/internal/v1/kyc', internalKycRoutes);
 app.use('/internal/v1/ledger', internalLedgerEnsureWalletRoutes);
 app.use('/internal/v1/ledger', internalLedgerAccountsBalanceRoutes);
+app.use(internalLedgerEntriesRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsCreateRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsReleaseRoutes);
 app.use('/internal/v1/ledger', internalLedgerPostingsCommitRoutes);
