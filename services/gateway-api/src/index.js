@@ -8,6 +8,7 @@ const requestLogging = require('./middleware/requestLogging');
 const logger = require('./infrastructure/logger');
 
 const identityRoutes = require('./routes/identity');
+const kycRoutes = require('./routes/kyc');
 const paymentIntentsRoutes = require('./routes/paymentIntents');
 const approvalsRoutes = require('./routes/approvals');
 const financialInboxRoutes = require('./routes/financialInbox');
@@ -25,6 +26,7 @@ const internalCardsRoutes = require('./routes/internal/cards');
 const internalCardsAuthDecisionRoutes = require('./routes/internal/cardsAuthDecision');
 const internalCardsAuthorizationWebhookRoutes = require('./routes/internal/cardsAuthorizationWebhook');
 const internalCardsFinancialWebhookRoutes = require('./routes/internal/cardsFinancialWebhook');
+const internalKycRoutes = require('./routes/internal/kyc');
 const internalLedgerEnsureWalletRoutes = require('./routes/internal/ledgerEnsureWallet');
 const internalLedgerAccountsBalanceRoutes = require('./routes/internal/ledgerAccountsBalance');
 const internalLedgerHoldsCreateRoutes = require('./routes/internal/ledgerHoldsCreate');
@@ -91,6 +93,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/public/v1/identity', identityRoutes);
+app.use('/public/v1/kyc', kycRoutes);
 app.use('/public/v1/finance/payment-intents', paymentIntentsRoutes);
 app.use('/public/v1/finance/approvals', approvalsRoutes);
 app.use('/public/v1/financial-inbox', financialInboxRoutes);
@@ -108,6 +111,7 @@ app.use('/internal/v1/cards', internalCardsRoutes);
 app.use('/internal/v1/cards', internalCardsAuthDecisionRoutes);
 app.use('/internal/v1/cards', internalCardsAuthorizationWebhookRoutes);
 app.use('/internal/v1/cards', internalCardsFinancialWebhookRoutes);
+app.use('/internal/v1/kyc', internalKycRoutes);
 app.use('/internal/v1/ledger', internalLedgerEnsureWalletRoutes);
 app.use('/internal/v1/ledger', internalLedgerAccountsBalanceRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsCreateRoutes);
