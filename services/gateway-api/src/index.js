@@ -32,6 +32,7 @@ const internalCardsAuthorizationWebhookRoutes = require('./routes/internal/cards
 const internalCardsFinancialWebhookRoutes = require('./routes/internal/cardsFinancialWebhook');
 const internalKycRoutes = require('./routes/internal/kyc');
 const internalLedgerEntriesRoutes = require('./routes/internal/ledgerEntries');
+const internalWalletLedgerMovementRoutes = require('./routes/internal/walletLedgerMovement');
 const internalLedgerEnsureWalletRoutes = require('./routes/internal/ledgerEnsureWallet');
 const internalLedgerWalletAccountsRoutes = require('./routes/internal/ledgerWalletAccounts');
 const internalLedgerAccountsBalanceRoutes = require('./routes/internal/ledgerAccountsBalance');
@@ -125,6 +126,8 @@ app.use('/internal/v1/kyc', internalKycRoutes);
 app.use('/internal/v1/ledger', internalLedgerEnsureWalletRoutes);
 app.use('/internal/v1/ledger', internalLedgerAccountsBalanceRoutes);
 app.use(internalLedgerEntriesRoutes);
+app.use(internalWalletLedgerMovementRoutes);
+app.use(personalWalletRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsCreateRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsReleaseRoutes);
 app.use('/internal/v1/ledger', internalLedgerPostingsCommitRoutes);
