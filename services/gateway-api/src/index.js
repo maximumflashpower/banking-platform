@@ -14,6 +14,7 @@ const ledgerEntriesRoutes = require('./routes/internal/ledgerEntries');
 const personalFinancialProfileRoutes = require('./routes/personalFinancialProfile');
 const personalWalletRoutes = require('./routes/personalWallet');
 const paymentIntentsRoutes = require('./routes/paymentIntents');
+const paymentIntentRoutes = require('./routes/internal/paymentIntents');
 const approvalsRoutes = require('./routes/approvals');
 const financialInboxRoutes = require('./routes/financialInbox');
 const cardsDisputesRoutes = require('./routes/cardsDisputes');
@@ -151,7 +152,7 @@ app.use('/internal/v1/step-up', internalStepUpStartRoutes);
 app.use('/internal/v1', internalAuditEvidenceRoutes);
 app.use('/internal/v1', walletBalancesRoute);
 app.use('/internal/v1', walletTransfersRoute);
-
+app.use('/internal/v1', paymentIntentRoutes);
 
 app.use((req, res) => {
   logger.warn('route_not_found', {
