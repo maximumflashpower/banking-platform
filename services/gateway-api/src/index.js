@@ -1,4 +1,4 @@
-const internalWalletTransfersRoutes = require('./routes/internal/walletTransfers');
+
 'use strict';
 
 const http = require('http');
@@ -31,9 +31,11 @@ const internalCardsRoutes = require('./routes/internal/cards');
 const internalCardsAuthDecisionRoutes = require('./routes/internal/cardsAuthDecision');
 const internalCardsAuthorizationWebhookRoutes = require('./routes/internal/cardsAuthorizationWebhook');
 const internalCardsFinancialWebhookRoutes = require('./routes/internal/cardsFinancialWebhook');
+const internalFinancialProfileRoutes = require('./routes/internal/financialProfile');
 const internalKycRoutes = require('./routes/internal/kyc');
 const internalLedgerEntriesRoutes = require('./routes/internal/ledgerEntries');
 const internalWalletLedgerMovementRoutes = require('./routes/internal/walletLedgerMovement');
+const internalWalletTransfersRoutes = require('./routes/internal/walletTransfers');
 const internalLedgerEnsureWalletRoutes = require('./routes/internal/ledgerEnsureWallet');
 const internalLedgerWalletAccountsRoutes = require('./routes/internal/ledgerWalletAccounts');
 const internalLedgerAccountsBalanceRoutes = require('./routes/internal/ledgerAccountsBalance');
@@ -123,12 +125,13 @@ app.use('/internal/v1/cards', internalCardsRoutes);
 app.use('/internal/v1/cards', internalCardsAuthDecisionRoutes);
 app.use('/internal/v1/cards', internalCardsAuthorizationWebhookRoutes);
 app.use('/internal/v1/cards', internalCardsFinancialWebhookRoutes);
+app.use('/internal/v1', internalFinancialProfileRoutes);
 app.use('/internal/v1/kyc', internalKycRoutes);
 app.use('/internal/v1/ledger', internalLedgerEnsureWalletRoutes);
 app.use('/internal/v1/ledger', internalLedgerAccountsBalanceRoutes);
 app.use(internalLedgerEntriesRoutes);
 app.use(internalWalletLedgerMovementRoutes);
-app.use(personalWalletRoutes);
+app.use('/internal/v1', internalWalletTransfersRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsCreateRoutes);
 app.use('/internal/v1/ledger', internalLedgerHoldsReleaseRoutes);
 app.use('/internal/v1/ledger', internalLedgerPostingsCommitRoutes);
@@ -211,4 +214,3 @@ function shutdown(signal) {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
-app.use(internalWalletTransfersRoutes);
