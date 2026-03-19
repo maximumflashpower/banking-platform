@@ -1,4 +1,4 @@
-const internalWalletTransfersRoutes = require('./routes/internal/walletTransfers');
+
 'use strict';
 
 const http = require('http');
@@ -21,6 +21,10 @@ const stepUpRoutes = require('./routes/stepUp');
 const webQrSessionsRoutes = require('./routes/webQrSessions');
 const socialRoutes = require('./routes/social');
 const kycProtectedProbeRoutes = require('./routes/kycProtectedProbe');
+const walletBalancesRoute = require('./routes/internal/walletBalances');
+const walletTransfersRoute = require('./routes/internal/walletTransfers');
+
+
 
 const internalBusinessesRoutes = require('./routes/internal/businesses');
 const internalCasesRoutes = require('./routes/internal/cases');
@@ -145,6 +149,9 @@ app.use('/internal/v1/reconciliation/runs', internalReconciliationRunDailyRoutes
 app.use('/internal/v1/reconciliation/actions', internalReconciliationActionsRoutes);
 app.use('/internal/v1/step-up', internalStepUpStartRoutes);
 app.use('/internal/v1', internalAuditEvidenceRoutes);
+app.use('/internal/v1', walletBalancesRoute);
+app.use('/internal/v1', walletTransfersRoute);
+
 
 app.use((req, res) => {
   logger.warn('route_not_found', {
@@ -211,4 +218,3 @@ function shutdown(signal) {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
-app.use(internalWalletTransfersRoutes);
