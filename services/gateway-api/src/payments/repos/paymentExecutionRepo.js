@@ -17,57 +17,67 @@ function getPool() {
   return pool;
 }
 
-async function findByIntentId(intentId) {
-  const res = await getPool().query(
-    `
-      SELECT *
-      FROM payment_intent_executions
-      WHERE payment_intent_reference_id = $1
-         OR payment_intent_id = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-    `,
-    [intentId]
-  );
+function normalizeRow(row) {
+  if (!row) return null;
 
-  return res.rows[0] || null;
+  return {
+    id: Number(row.id),
+    payment_intent_id: row.payment_intent_id,
+    idempotency_key: row.idempotency_key,
+    request_hash: row.request_hash,
+    execution_status: row.execution_status,
+    created_at: row.created_at,
+  };
 }
 
-async function createExecution({
-  payment_intent_reference_id,
-  payment_intent_id,
-  ledger_transaction_id,
-  idempotency_key,
-  request_hash,
-}) {
-  try {
-    const res = await getPool().query(
-      `
-        INSERT INTO payment_intent_executions (
-          payment_intent_reference_id,
-          payment_intent_id,
-          ledger_transaction_id,
-          idempotency_key,
-          request_hash
-        )
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *
-      `,
-      [
-        payment_intent_reference_id,
+async function findByIntentId(paymentIntentId) {
+  const result = await getPool().query(
+    `
+      SELECT
+        id,
         payment_intent_id,
-        ledger_transaction_id,
         idempotency_key,
         request_hash,
-      ]
+        execution_status,
+        created_at
+      FROM payment_intent_executions
+      WHERE payment_intent_id = $1
+      LIMIT 1
+    `,
+    [paymentIntentId]
+  );
+
+  return normalizeRow(result.rows[0] || null);
+}
+
+async function createExecution({ payment_intent_id, idempotency_key, request_hash }) {
+  try {
+    const result = await getPool().query(
+      `
+        INSERT INTO payment_intent_executions (
+          payment_intent_id,
+          idempotency_key,
+          request_hash,
+          execution_status
+        )
+        VALUES ($1, $2, $3, 'recorded')
+        RETURNING
+          id,
+          payment_intent_id,
+          idempotency_key,
+          request_hash,
+          execution_status,
+          created_at
+      `,
+      [payment_intent_id, idempotency_key, request_hash]
     );
 
-    return res.rows[0];
-  } catch (err) {
-    if (err.code === '23505') {
+    return normalizeRow(result.rows[0]);
+  } catch (error) {
+    if (error.code === '23505') {
       return null;
     }
-    throw err;
+    throw error;
   }
 }
 
