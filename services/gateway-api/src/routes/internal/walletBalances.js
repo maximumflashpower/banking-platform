@@ -3,25 +3,24 @@
 const express = require('express');
 const router = express.Router();
 
-const { getWalletBalance } = require('../../wallet/usecases/getWalletBalance');
+const getWalletBalance = require('../../wallet/usecases/getWalletBalance');
 
-router.get('/wallets/:wallet_id/balance', async (req, res) => {
+router.get('/wallets/:walletId/balance', async (req, res) => {
   try {
-    const { wallet_id } = req.params;
+    const { walletId } = req.params;
 
-    const result = await getWalletBalance({ wallet_id });
+    const result = await getWalletBalance({ walletId });
 
-    return res.status(200).json({
-      ok: true,
-      wallet_id: result.wallet_id,
-      account_code: result.account_code,
-      currency: result.currency,
-      balance: result.balance
-    });
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+
+    return res.status(200).json(result);
   } catch (err) {
+    console.error(err);
     return res.status(400).json({
       ok: false,
-      code: err.code || 'UNKNOWN_ERROR',
+      code: 'UNKNOWN_ERROR',
       message: err.message
     });
   }

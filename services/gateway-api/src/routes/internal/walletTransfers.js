@@ -1,22 +1,41 @@
-const express = require('express');
-const transferBetweenWallets = require('../../wallet/usecases/transferBetweenWallets');
+'use strict';
 
+const express = require('express');
 const router = express.Router();
 
-router.post('/internal/v1/wallet/transfers', async (req, res) => {
+const transferBetweenWallets = require('../../wallet/usecases/transferBetweenWallets');
+
+router.post('/wallet/transfers', async (req, res) => {
   try {
-    const result = await transferBetweenWallets(req.body || {});
-    return res.status(200).json({
-      ok: true,
-      entry: result,
+    const {
+      from_wallet_id,
+      to_wallet_id,
+      amount,
+      currency,
+      reference_type,
+      reference_id
+    } = req.body || {};
+
+    const result = await transferBetweenWallets({
+      fromWalletId: from_wallet_id,
+      toWalletId: to_wallet_id,
+      amount,
+      currency,
+      referenceType: reference_type,
+      referenceId: reference_id
     });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({
+
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
       ok: false,
-      error: {
-        code: error.code || 'INTERNAL_ERROR',
-        message: error.message,
-      },
+      code: 'INTERNAL_ERROR',
+      message: err.message
     });
   }
 });
