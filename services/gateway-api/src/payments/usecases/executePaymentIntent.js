@@ -21,10 +21,15 @@ module.exports = async function executePaymentIntent(id) {
   }
 
   const paymentIntent = await paymentIntentRepo.findById(paymentIntentId);
-  assertExecutableIntent(paymentIntent);
+
+  if (!paymentIntent) {
+    const error = new Error('payment intent not found');
+    error.status = 404;
+    error.code = 'PAYMENT_INTENT_NOT_FOUND';
+    throw error;
+  }
 
   const existingExecution = await paymentExecutionRepo.findByIntentId(paymentIntent.id);
-
   if (existingExecution && existingExecution.ledger_transaction_id) {
     return {
       payment_intent: {
@@ -36,6 +41,8 @@ module.exports = async function executePaymentIntent(id) {
     };
   }
 
+  assertExecutableIntent(paymentIntent);
+
   const idempotencyKey = buildExecutionIdempotencyKey(paymentIntent);
   const requestHash = buildExecutionRequestHash(paymentIntent);
 
@@ -44,7 +51,20 @@ module.exports = async function executePaymentIntent(id) {
   try {
     await client.query('BEGIN');
 
-    let execution = existingExecution;
+    let execution = await paymentExecutionRepo.findByIntentIdForUpdate(paymentIntent.id, { client });
+
+    if (execution && execution.ledger_transaction_id) {
+      await client.query('COMMIT');
+
+      return {
+        payment_intent: {
+          ...paymentIntent,
+          status: 'executed',
+        },
+        execution,
+        idempotent: true,
+      };
+    }
 
     if (!execution) {
       execution = await paymentExecutionRepo.createExecution(
@@ -57,21 +77,21 @@ module.exports = async function executePaymentIntent(id) {
       );
 
       if (!execution) {
-        execution = await paymentExecutionRepo.findByIntentId(paymentIntent.id, { client });
-
-        if (execution && execution.ledger_transaction_id) {
-          await client.query('ROLLBACK');
-
-          return {
-            payment_intent: {
-              ...paymentIntent,
-              status: 'executed',
-            },
-            execution,
-            idempotent: true,
-          };
-        }
+        execution = await paymentExecutionRepo.findByIntentIdForUpdate(paymentIntent.id, { client });
       }
+    }
+
+    if (execution && execution.ledger_transaction_id) {
+      await client.query('COMMIT');
+
+      return {
+        payment_intent: {
+          ...paymentIntent,
+          status: 'executed',
+        },
+        execution,
+        idempotent: true,
+      };
     }
 
     const ledgerResult = await executePaymentIntentLedger({
@@ -125,6 +145,17 @@ module.exports = async function executePaymentIntent(id) {
       idempotent: false,
     };
   } catch (error) {
+    try {
+      await paymentExecutionRepo.markExecutionFailed(
+        paymentIntent.id,
+        error.code || 'LEDGER_EXECUTION_FAILED',
+        error.message || 'ledger execution failed',
+        { client }
+      );
+    } catch (_) {
+      // no-op
+    }
+
     await client.query('ROLLBACK');
     throw error;
   } finally {
