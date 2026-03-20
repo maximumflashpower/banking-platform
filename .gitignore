@@ -75,4 +75,11 @@ db/**/*.sql.tmp
 # NO ignorar migraciones versionadas
 !db/financial/
 !db/financial/migrations/
-!db/financial/migrations/*.sql
+!db/financial/migrations/*.sqlbackups/
+backups_legacy/
+
+backups/
+backups_legacy/
+*.bundle
+*.sql
+*Zone.Identifier
