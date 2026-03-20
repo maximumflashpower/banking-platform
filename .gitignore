@@ -60,3 +60,19 @@ docker-compose.override.yml
 !tests/
 !tests/fixtures/
 !tests/fixtures/webhook-stage5f-final.json
+
+# =========================
+# DB / migrations
+# =========================
+
+# Ignorar dumps, temporales y archivos locales de base de datos
+db/**/*.tmp
+db/**/*.log
+db/**/*.bak
+db/**/*.dump
+db/**/*.sql.tmp
+
+# NO ignorar migraciones versionadas
+!db/financial/
+!db/financial/migrations/
+!db/financial/migrations/*.sql
