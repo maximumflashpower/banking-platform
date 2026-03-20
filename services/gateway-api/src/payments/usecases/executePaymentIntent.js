@@ -2,6 +2,7 @@
 
 const paymentIntentRepo = require('../repos/paymentIntentRepo');
 const paymentExecutionRepo = require('../repos/paymentExecutionRepo');
+const financialInboxRepo = require('../repos/financialInboxRepo');
 const { assertExecutableIntent } = require('../lib/paymentIntentStateGuard');
 const { executePaymentIntentLedger } = require('../services/paymentLedgerExecutor');
 const financialDb = require('../../infrastructure/financialDb');
@@ -135,6 +136,24 @@ module.exports = async function executePaymentIntent(id) {
         VALUES ($1, 'executed')
       `,
       [paymentIntent.id]
+    );
+
+    await financialInboxRepo.insertEvent(
+      {
+        event_type: 'payment_intent.executed',
+        reference_type: 'payment_intent',
+        reference_id: paymentIntent.id,
+        payload: {
+          payment_intent_id: paymentIntent.id,
+          user_id: updatedIntentResult.rows[0].user_id,
+          amount: Number(updatedIntentResult.rows[0].amount),
+          currency: updatedIntentResult.rows[0].currency,
+          ledger_transaction_id: finalizedExecution.ledger_transaction_id,
+          execution_id: finalizedExecution.id,
+          execution_status: finalizedExecution.execution_status,
+        },
+      },
+      { client }
     );
 
     await client.query('COMMIT');
