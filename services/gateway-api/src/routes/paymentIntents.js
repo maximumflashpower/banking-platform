@@ -3,13 +3,11 @@
 const express = require('express');
 const crypto = require('crypto');
 const { pool } = require('../infrastructure/financialDb');
+const paymentIntentRiskGateService = require('../services/payments/paymentIntentRiskGateService');
+const paymentIntentRiskGateRepo = require('../repos/payments/paymentIntentRiskGateRepo');
 const { requireKycVerified } = require('../middleware/requireKycVerified');
-const {
-  createPaymentIntentRiskPassiveService
-} = require('../services/payments/paymentIntentRiskPassiveService');
 
 const router = express.Router();
-const riskPassiveService = createPaymentIntentRiskPassiveService({});
 
 const IDEM_SCOPE = 'public.v1.finance.payment-intents.create';
 
@@ -113,6 +111,44 @@ async function insertIntentState(client, {
   );
 }
 
+function withRiskFields(baseResponse, riskGate) {
+  return {
+    ...baseResponse,
+    risk_gate_status: riskGate.risk_gate_status,
+    risk_decision_id: riskGate.decision_id,
+    risk_reason_code: riskGate.reason_code,
+    risk_score: riskGate.risk_score,
+    aml_risk_case_id: riskGate.aml_risk_case_id,
+    ops_notification_id: riskGate.ops_notification_id
+  };
+}
+
+async function hydrateRiskFieldsIfNeeded(responseJson) {
+  if (!responseJson || !responseJson.intent_id) {
+    return responseJson;
+  }
+
+  if (responseJson.risk_gate_status) {
+    return responseJson;
+  }
+
+  const projection = await paymentIntentRiskGateRepo.getPaymentIntentForRisk(responseJson.intent_id);
+
+  if (!projection) {
+    return responseJson;
+  }
+
+  return {
+    ...responseJson,
+    risk_gate_status: projection.risk_gate_status,
+    risk_decision_id: projection.risk_decision_id,
+    risk_reason_code: projection.risk_reason_code,
+    risk_score: projection.risk_score,
+    aml_risk_case_id: projection.aml_risk_case_id,
+    ops_notification_id: projection.ops_notification_id
+  };
+}
+
 router.post('/', requireKycVerified, async (req, res, next) => {
   const idemKey = req.header('Idempotency-Key');
 
@@ -190,7 +226,8 @@ router.post('/', requireKycVerified, async (req, res, next) => {
         });
       }
 
-      return res.status(200).json(row.response_json);
+      const hydrated = await hydrateRiskFieldsIfNeeded(row.response_json);
+      return res.status(200).json(hydrated);
     }
 
     const intentId = newUuid();
@@ -324,28 +361,34 @@ router.post('/', requireKycVerified, async (req, res, next) => {
 
     await client.query('COMMIT');
 
-    let riskAssessment = null;
+    const riskGate = await paymentIntentRiskGateService.evaluateOnCreate({
+      paymentIntentId: intentId,
+      payload: {
+        space_id: spaceId,
+        payer_user_id,
+        payee_user_id,
+        amount_cents,
+        currency: normalizedCurrency,
+        risk_context: req.body?.risk_context || {}
+      },
+      actor: {
+        type: 'system',
+        id: 'public-payment-intents'
+      }
+    });
 
-    try {
-      riskAssessment = await riskPassiveService.evaluatePassiveRisk({
-        paymentIntent: {
-          id: intentId,
-          amount_cents,
-          payer_user_id,
-          payee_user_id,
-          space_id: spaceId,
-          currency: normalizedCurrency
-        },
-        requestContext: {}
-      });
-    } catch (_) {
-      riskAssessment = null;
-    }
+    const finalResponse = withRiskFields(provisionalResponse, riskGate);
 
-    const finalResponse = {
-      ...provisionalResponse,
-      ...(riskAssessment ? { risk_assessment: riskAssessment } : {})
-    };
+    await pool.query(
+      `
+        UPDATE idempotency_keys
+        SET response_json = $4::jsonb
+        WHERE space_id = $1
+          AND scope = $2
+          AND idem_key = $3
+      `,
+      [spaceId, IDEM_SCOPE, idemKey, JSON.stringify(finalResponse)]
+    );
 
     return res.status(201).json(finalResponse);
   } catch (err) {
