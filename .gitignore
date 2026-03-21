@@ -2,6 +2,7 @@
 # OS artifacts
 # ------------------------
 *:Zone.Identifier
+*Zone.Identifier
 .DS_Store
 
 # ------------------------
@@ -33,9 +34,13 @@ coverage/
 # Backups / dumps
 # ------------------------
 backups/
+backups_legacy/
+*.bundle
 *.dump
-*.sql
 *.tgz
+backup_*.sql
+backups/**/*.sql
+backups_legacy/**/*.sql
 
 # ------------------------
 # Local artifacts
@@ -65,14 +70,14 @@ docker-compose.override.yml
 # DB / migrations
 # =========================
 
-# Ignorar dumps, temporales y archivos locales de base de datos
+# Ignore local DB temp artifacts, but keep real migrations
 db/**/*.tmp
 db/**/*.log
 db/**/*.bak
 db/**/*.dump
 db/**/*.sql.tmp
 
-# NO ignorar migraciones versionadas
+# Do NOT ignore versioned migrations
 !db/financial/
 !db/financial/migrations/
 !db/financial/migrations/*.sql
